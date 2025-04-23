@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 streamlit_app.py – Dashboard CHOPS v2.3.1
-• Corrige l’affichage des NaN dans la vue Membres.
+• Corrige l’affichage des NaN dans la vue Membres et assure inclusion des enfants sans achat.
 """
 
 from __future__ import annotations
@@ -176,6 +176,9 @@ def build_members_df() -> pd.DataFrame:
         members["days_left"] = (end_dt - today).dt.days
         members["session_name"] = members["sessionId"].map(sessions["name"])
 
+    # Catégorise le statut paiement pour inclure les NaN
+    members["status_cat"] = members["status"].fillna("no_purchase")
+
     return members
 
 members_df = build_members_df()
@@ -192,7 +195,7 @@ menu = st.sidebar.radio(
     ],
 )
 
-# ╭────────────────── DASHBOARD ──────────────────╮
+# ╭────────────────── DASHBOARD ──────────────────╯
 if menu == "Dashboard":
     st.header("📊 Vue d'ensemble")
     c1, c2, c3, c4 = st.columns(4)
@@ -228,7 +231,7 @@ if menu == "Dashboard":
             use_container_width=True,
         )
 
-# ╭────────────────── MEMBRES ──────────────────╮
+# ╭────────────────── MEMBRES ──────────────────╯
 elif menu == "Membres":
     st.header("👥 Gestion des membres")
 
@@ -238,17 +241,15 @@ elif menu == "Membres":
             "Type", ["parent", "child"], default=["parent", "child"]
         )
         f_status = st.multiselect(
-            "Statut paiement", ["paid", "pending", None], default=["paid", "pending", None]
+            "Statut paiement", ["paid", "pending", "no_purchase"],
+            default=["paid", "pending", "no_purchase"],
+            format_func=lambda x: {"paid":"Payé","pending":"En attente","no_purchase":"Sans achat"}[x]
         )
         query = st.text_input("Recherche nom/email…")
 
     df = members_df.copy()
     df = df[df["type"].isin(f_type)]
-
-    status_mask = df["status"].isin(f_status)
-    if None in f_status:
-        status_mask |= df["status"].isna()
-    df = df[status_mask]
+    df = df[df["status_cat"].isin(f_status)]
 
     if query:
         df = df[
@@ -264,7 +265,7 @@ elif menu == "Membres":
     def badge(lbl, color):
         return (
             f'<span style="background:{color};color:#fff;padding:2px 6px;'
-            f'border-radius:6px;font-size:11px;margin-left:4px;">{lbl}</span>'
+            f'border-radius:6px;font-size:11px;margin-left:4px;'">{lbl}</span>'
         )
 
     def row_html(r):
@@ -274,7 +275,7 @@ elif menu == "Membres":
         )
         avatar = (
             f'<img src="{r.avatar}" style="width:32px;height:32px;border-radius:50%;'
-            f'object-fit:cover;margin-right:8px;vertical-align:middle;">'
+            f'object-fit:cover;margin-right:8px;vertical-align:middle;"/>'
         )
         role = "Enfant" if r.type == "child" else "Parent"
         status_icon = (
@@ -323,7 +324,7 @@ elif menu == "Membres":
         unsafe_allow_html=True,
     )
 
-# ╭────────────────── PRÉSENCES & EXCÉDENCES ──────────────────╮
+# ╭────────────────── PRÉSENCES & EXCÉDENCES ──────────────────╯
 elif menu == "Présences & Excédences":
     st.header("📅 Présences & excédences")
 
@@ -376,7 +377,7 @@ elif menu == "Présences & Excédences":
                 use_container_width=True,
             )
 
-# ╭────────────────── ACHATS ──────────────────╮
+# ╭────────────────── ACHATS ──────────────────╯
 elif menu == "Achats":
     st.header("💳 Achats & paiements")
 
@@ -422,7 +423,7 @@ elif menu == "Achats":
                 use_container_width=True,
             )
 
-# ╭────────────────── SESSIONS & NIVEAUX ──────────────────╮
+# ╭────────────────── SESSIONS & NIVEAUX ──────────────────╯
 else:
     st.header("🗂 Sessions & Niveaux")
 
