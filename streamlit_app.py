@@ -1,37 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-streamlit_app.py – Dashboard Club CHOPS (Ping‑pong)
-===================================================
-Fonctionnalités clés (v2) :
-  • Login protégé par mot de passe (st.secrets["dashboard_pwd"]).
-  • Connexion Firebase Admin SDK via compte de service (clé stockée
-    dans st.secrets["firebase"]).
-  • Agrégation avancée : Parents, Enfants, Achats, Sessions,
-    Niveaux/Trainings, Excédences & Inscriptions.
-  • Onglets :
-      – Dashboard (métriques & graphiques)
-      – Membres            (tableau stylé + actions)
-      – Présences & Excédences (quotas vs. participations)
-      – Achats             (table + graphes)
-      – Sessions & Niveaux (config + trainings)
-  • Actions Firestore avec log automatique :
-      – Marquer payé   (update purchases.status = paid)
-      – Valider étudiant (update users.*)
-  • Style iOS‑like (badges, couleurs) & filtres sidebar.
-
-Pré‑requis :
-  • .streamlit/secrets.toml
-        [firebase]    # → JSON clé de service
-        project_id = "chops-app-123"
-        dashboard_pwd = "SuperMotDePasse"
-  • requirements.txt
-        streamlit firebase-admin pandas altair pytz
-
-‣ Déploie ensuite sur Streamlit Cloud : `streamlit run streamlit_app.py`
+streamlit_app.py – Dashboard Club CHOPS (Ping-pong)
+(v2.1 – fix timezone mismatch in days_left calculation)
 """
 
 from __future__ import annotations
-
 from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Dict, List, Any
@@ -77,7 +50,6 @@ DEFAULT_AVATAR = (
 )
 
 def signed_url(path: str | None) -> str:
-    """Retourne l'URL publique ou signée (1 h) d'un fichier GCS."""
     if not path:
         return DEFAULT_AVATAR
     if path.startswith("http"):
@@ -98,7 +70,6 @@ def iso_date(ts) -> str:
 # ╭────────────────────────── Chargement data ─────────────────────────╮
 @st.cache_data(show_spinner=True)
 def load_col(ref_path: str) -> pd.DataFrame:
-    """Charge une collection Firestore dans un DataFrame (documents flattés)."""
     col_ref = db.collection(ref_path)
     docs = [d.to_dict() | {"id": d.id} for d in col_ref.stream()]
     return pd.json_normalize(docs)
@@ -113,7 +84,6 @@ def load_children(users_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def load_sub_rows(users_df: pd.DataFrame, sub: str) -> pd.DataFrame:
-    """Sous‑collection générique : exceedances, inscriptions, participations …"""
     rows: List[Dict[str, Any]] = []
     for uid in users_df["id"]:
         for d in db.collection(f"users/{uid}/{sub}").stream():
@@ -124,7 +94,6 @@ def load_sub_rows(users_df: pd.DataFrame, sub: str) -> pd.DataFrame:
 def load_all() -> Dict[str, pd.DataFrame]:
     users = load_col("users")
     children = load_children(users)
-
     purchases = load_col("purchases")
     sessions = load_col("sessionConfigs")
 
@@ -151,7 +120,6 @@ def load_all() -> Dict[str, pd.DataFrame]:
         "participations": participations,
     }
 
-
 data = load_all()
 
 # ╭────────────────── Construction DataFrame Membres ─────────────────╮
@@ -162,11 +130,9 @@ def build_members_df() -> pd.DataFrame:
     purchases = data["purchases"].copy()
     sessions = data["sessions"].set_index("id") if not data["sessions"].empty else pd.DataFrame()
 
-    # Parents --------------------------------------------------------
     users["type"] = "parent"
     users["parentUid"] = users["id"]
 
-    # Enfants --------------------------------------------------------
     if not children.empty:
         children["type"] = "child"
         children.rename(
@@ -187,7 +153,6 @@ def build_members_df() -> pd.DataFrame:
 
     members = pd.concat([users, children], ignore_index=True, sort=False)
 
-    # Dernier achat --------------------------------------------------
     if not purchases.empty:
         if "createdAt._seconds" in purchases.columns:
             t_col = "createdAt._seconds"
@@ -197,20 +162,21 @@ def build_members_df() -> pd.DataFrame:
         members["_key"] = members["parentUid"] + "_" + members["id"].where(members["type"] == "child", "")
         members = members.merge(firsts, on="_key", how="left", suffixes=("", "_p")).drop(columns="_key")
 
-    # Enrichissement visuel ----------------------------------------
     members["full_name"] = (
         members["first_name"].fillna("") + " " + members["last_name"].fillna("")
     ).str.strip()
     members["avatar"] = members["image_url"].apply(signed_url)
 
-    # Session name & days_left --------------------------------------
     if not sessions.empty and "sessionId" in members.columns:
         name_map = sessions["name"].to_dict() if "name" in sessions.columns else {}
         end_map = sessions["endDate"].to_dict() if "endDate" in sessions.columns else {}
         members["session_name"] = members["sessionId"].map(name_map)
-        end_dt = pd.to_datetime(members["sessionId"].map(end_map), errors="coerce")
+
+        # -- FIX TZ mismatch : tout en UTC tz-aware --
+        end_dt = pd.to_datetime(members["sessionId"].map(end_map), errors="coerce", utc=True)
         today = pd.Timestamp.now(tz=pytz.UTC)
-        members["days_left"] = (end_dt - today).dt.days
+        delta = end_dt - today
+        members["days_left"] = delta.dt.days
 
     return members
 
