@@ -195,7 +195,7 @@ menu = st.sidebar.radio(
     ],
 )
 
-# ╭────────────────── DASHBOARD ──────────────────╯
+# ╭────────────────── DASHBOARD ──────────────────╮
 if menu == "Dashboard":
     st.header("📊 Vue d'ensemble")
     c1, c2, c3, c4 = st.columns(4)
@@ -231,7 +231,7 @@ if menu == "Dashboard":
             use_container_width=True,
         )
 
-# ╭────────────────── MEMBRES ──────────────────╯
+# ╭────────────────── MEMBRES ──────────────────╮
 elif menu == "Membres":
     st.header("👥 Gestion des membres")
 
@@ -241,9 +241,14 @@ elif menu == "Membres":
             "Type", ["parent", "child"], default=["parent", "child"]
         )
         f_status = st.multiselect(
-            "Statut paiement", ["paid", "pending", "no_purchase"],
+            "Statut paiement",
+            ["paid", "pending", "no_purchase"],
             default=["paid", "pending", "no_purchase"],
-            format_func=lambda x: {"paid":"Payé","pending":"En attente","no_purchase":"Sans achat"}[x]
+            format_func=lambda x: {
+                "paid": "Payé",
+                "pending": "En attente",
+                "no_purchase": "Sans achat"
+            }[x],
         )
         query = st.text_input("Recherche nom/email…")
 
@@ -265,7 +270,8 @@ elif menu == "Membres":
     def badge(lbl, color):
         return (
             f'<span style="background:{color};color:#fff;padding:2px 6px;'
-            f'border-radius:6px;font-size:11px;margin-left:4px;'">{lbl}</span>'
+            f'border-radius:6px;font-size:11px;margin-left:4px;">{lbl}'
+            f'</span>'
         )
 
     def row_html(r):
@@ -275,7 +281,7 @@ elif menu == "Membres":
         )
         avatar = (
             f'<img src="{r.avatar}" style="width:32px;height:32px;border-radius:50%;'
-            f'object-fit:cover;margin-right:8px;vertical-align:middle;"/>'
+            f'object-fit:cover;margin-right:8px;vertical-align:middle;">'
         )
         role = "Enfant" if r.type == "child" else "Parent"
         status_icon = (
@@ -317,14 +323,14 @@ elif menu == "Membres":
     rows_html = "\n".join(df.apply(row_html, axis=1))
 
     st.markdown(
-        "<div style='overflow-x:auto;'>"
-        "<table style='width:100%;border-collapse:collapse;font-size:14px;'>"
-        + header
-        + f"<tbody>{rows_html}</tbody></table></div>",
+        "<div style='overflow-x:auto;'>" +
+        "<table style='width:100%;border-collapse:collapse;font-size:14px;'>" +
+        header +
+        f"<tbody>{rows_html}</tbody></table></div>",
         unsafe_allow_html=True,
     )
 
-# ╭────────────────── PRÉSENCES & EXCÉDENCES ──────────────────╯
+# ╭────────────────── PRÉSENCES & EXCÉDENCES ──────────────────╮
 elif menu == "Présences & Excédences":
     st.header("📅 Présences & excédences")
 
@@ -336,9 +342,7 @@ elif menu == "Présences & Excédences":
         st.info("Aucune donnée de présence / excédence.")
     else:
         if not ex_df.empty:
-            ex_df["date"] = pd.to_datetime(ex_df["exceedAt"], errors="coerce").apply(
-                iso_date
-            )
+            ex_df["date"] = pd.to_datetime(ex_df["exceedAt"], errors="coerce").apply(iso_date)
             ex_df.rename(
                 columns=dict(
                     uid="Utilisateur",
@@ -356,9 +360,7 @@ elif menu == "Présences & Excédences":
             )
 
         if not ins_df.empty:
-            ins_df["date"] = pd.to_datetime(
-                ins_df["date"], errors="coerce"
-            ).apply(iso_date)
+            ins_df["date"] = pd.to_datetime(ins_df["date"], errors="coerce").apply(iso_date)
             st.subheader("Inscriptions récentes")
             st.dataframe(
                 ins_df[["uid", "training_uid", "type_utilisateur", "date"]]
@@ -367,9 +369,7 @@ elif menu == "Présences & Excédences":
             )
 
         if not par_df.empty:
-            par_df["date"] = pd.to_datetime(
-                par_df["date"], errors="coerce"
-            ).apply(iso_date)
+            par_df["date"] = pd.to_datetime(par_df["date"], errors="coerce").apply(iso_date)
             st.subheader("Participations")
             st.dataframe(
                 par_df[["uid", "training_uid", "type_utilisateur", "date"]]
@@ -377,7 +377,7 @@ elif menu == "Présences & Excédences":
                 use_container_width=True,
             )
 
-# ╭────────────────── ACHATS ──────────────────╯
+# ╭────────────────── ACHATS ──────────────────╮
 elif menu == "Achats":
     st.header("💳 Achats & paiements")
 
@@ -392,26 +392,11 @@ elif menu == "Achats":
         else:
             pur_df["date"] = pd.NaT
 
-        cols = [
-            c
-            for c in [
-                "id",
-                "userId",
-                "childId",
-                "membershipId",
-                "sessionId",
-                "paymentMethod",
-                "status",
-                "finalAmount",
-                "promoCode",
-                "date",
-            ]
-            if c in pur_df
-        ]
-        st.dataframe(
-            pur_df[cols].sort_values("date", ascending=False),
-            use_container_width=True,
-        )
+        cols = [c for c in [
+            "id","userId","childId","membershipId","sessionId",
+            "paymentMethod","status","finalAmount","promoCode","date"
+        ] if c in pur_df]
+        st.dataframe(pur_df[cols].sort_values("date", ascending=False), use_container_width=True)
 
         if "status" in pur_df:
             pcount = pur_df["status"].fillna("None").value_counts().reset_index()
@@ -423,7 +408,7 @@ elif menu == "Achats":
                 use_container_width=True,
             )
 
-# ╭────────────────── SESSIONS & NIVEAUX ──────────────────╯
+# ╭────────────────── SESSIONS & NIVEAUX ──────────────────╮
 else:
     st.header("🗂 Sessions & Niveaux")
 
