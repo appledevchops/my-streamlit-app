@@ -140,18 +140,49 @@ def build_members_df() -> pd.DataFrame:
 
     members = pd.concat([users, children], ignore_index=True, sort=False)
 
-    # jointure avec dernier achat --------------------------------
-    if not purchases.empty:
-        purchases.sort_values("createdAt._seconds", ascending=False, inplace=True)
-        purchases["_key"] = purchases["userId"] + "_" + purchases["childId"].fillna("")
-        firsts = purchases.drop_duplicates("_key")
-        firsts = firsts[[
-            "_key", "membershipId", "sessionId", "status", "paymentMethod",
-            "basePrice", "finalAmount", "promoCode", "createdAt._seconds"
-        ]]
-        members["_key"] = members["parentUid"] + "_" + members["id"].where(members["type"] == "child", "")
-        members = members.merge(firsts, on="_key", how="left")
-        members.drop(columns="_key", inplace=True)
+ # ────────────────────────── jointure avec le dernier achat ──────────────────────────
+if not purchases.empty:
+
+    # 1) choisir la bonne colonne timestamp (elle change selon les docs)
+    if "createdAt._seconds" in purchases.columns:
+        ts_col = "createdAt._seconds"
+    elif "createdAt.seconds" in purchases.columns:
+        ts_col = "createdAt.seconds"
+    else:
+        ts_col = None            # aucun timestamp présent → on ne trie pas
+
+    # 2) trier du plus récent au plus ancien si possible
+    if ts_col:
+        purchases.sort_values(ts_col, ascending=False, inplace=True)
+
+    # 3) construire une clé composite pour repérer le dernier achat
+    purchases["_key"] = purchases["userId"] + "_" + purchases["childId"].fillna("")
+    firsts = purchases.drop_duplicates("_key")
+
+    # 4) ne garder que les colonnes utiles à la jointure
+    firsts = firsts[
+        [
+            "_key",
+            "membershipId",
+            "sessionId",
+            "status",
+            "paymentMethod",
+            "basePrice",
+            "finalAmount",
+            "promoCode",
+            ts_col if ts_col else purchases.columns[0]  # pour avoir au moins une date
+        ]
+    ]
+
+    # 5) même clé côté membres, puis merge
+    members["_key"] = members["parentUid"] + "_" + members["id"].where(
+        members["type"] == "child", ""
+    )
+    members = members.merge(firsts, on="_key", how="left")
+
+    # 6) nettoyage
+    members.drop(columns="_key", inplace=True)
+
 
     # Nom complet & avatar
     members["full_name"] = (members["first_name"].fillna("") + " " + members["last_name"].fillna("")).str.strip()
