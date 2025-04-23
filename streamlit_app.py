@@ -6,8 +6,8 @@ Fonctionnalités :
   • Login par mot-de-passe (st.secrets["dashboard_pwd"]).
   • Connexion Firebase via compte de service (st.secrets["firebase"]).
   • Agrégation Parents / Enfants / Achats / Niveaux / Sessions.
-  • Table stylée avec photos, badges (Admin, Coach, Parent, Enfant), statut paiements,
-    actions « Marquer payé » & « Valider étudiant ».
+  • Table stylée avec photos, badges (Admin, Coach, Parent, Enfant),
+    statut des paiements, actions « Marquer payé » & « Valider étudiant ».
   • Onglets : Vue dʼensemble, Membres, Niveaux & Cours, Achats.
   • Graphiques Altair (inscriptions / répartition niveaux).
 
@@ -16,7 +16,7 @@ Pré-requis :
         [firebase]
         … service-account JSON …
         dashboard_pwd = "VotreMotDePasse"
-  • requirements.txt : streamlit, firebase-admin, pandas, altair, google-cloud-firestore…
+  • requirements.txt : streamlit, firebase-admin, pandas, altair…
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ import altair as alt
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
 
-# ╭──────────────────────── Config Streamlit ─────────────────────╮
+# ╭──────────────────────── Config ───────────────────────────────╮
 st.set_page_config(
     page_title="Dashboard Club Ping-pong",
     page_icon="🏓",
@@ -46,17 +46,16 @@ if "auth" not in st.session_state:
         st.stop()
     st.session_state.auth = True
 
-# ───────────────────────── Connexion Firebase ───────────────────
+# ───────────────────────── Firebase ─────────────────────────────
 if not firebase_admin._apps:
     fb_conf = dict(st.secrets["firebase"])
     cred    = credentials.Certificate(fb_conf)
     firebase_admin.initialize_app(
-        cred,
-        {"storageBucket": f"{fb_conf['project_id']}.appspot.com"},
+        cred, {"storageBucket": f"{fb_conf['project_id']}.appspot.com"}
     )
 
-db      = firestore.client()
-bucket  = storage.bucket()   # pour les avatars
+db     = firestore.client()
+bucket = storage.bucket()      # pour les avatars
 
 # ───────────────────────── Utilitaires ──────────────────────────
 def firestore_to_df(col_ref) -> pd.DataFrame:
@@ -78,17 +77,18 @@ def format_date(ts) -> str:
         return ts.strftime("%d/%m/%Y")
     return ""
 
-# ───────────────────────── Chargement Firestore ─────────────────
+# ───────────────────────── Chargement data ──────────────────────
 @st.cache_data(show_spinner=True)
 def load_data() -> Dict[str, pd.DataFrame]:
-    users_df     = firestore_to_df(db.collection("users"))
-    # enfants
+    users_df = firestore_to_df(db.collection("users"))
+
+    # enfants (sous-col « children » pour chaque user)
     child_rows: List[Dict[str, Any]] = []
     for _, row in users_df.iterrows():
         uid = row["id"]
         for d in db.collection(f"users/{uid}/children").stream():
             child_rows.append(d.to_dict() | {"childId": d.id, "parentUid": uid})
-    children_df  = pd.json_normalize(child_rows)
+    children_df = pd.json_normalize(child_rows)
 
     purchases_df = firestore_to_df(db.collection("purchases"))
     levels_df    = firestore_to_df(db.collection("levels"))
@@ -121,10 +121,10 @@ def build_members_df() -> pd.DataFrame:
     children["type"] = "child"
     children.rename(
         columns={
-            "childId": "id",
+            "childId":   "id",
             "firstName": "first_name",
-            "lastName": "last_name",
-            "photoUrl": "image_url",
+            "lastName":  "last_name",
+            "photoUrl":  "image_url",
             "birthDate": "birth_date",
         },
         inplace=True,
@@ -135,9 +135,9 @@ def build_members_df() -> pd.DataFrame:
 
     members = pd.concat([users, children], ignore_index=True, sort=False)
 
-    # ─────────────────── jointure avec le dernier achat ───────────────────
+    # ───────────── jointure avec le dernier achat ───────────────
     if not purchases.empty:
-        # 1) colonne timestamp (varie selon la structure)
+        # 1) colonne timestamp selon structure
         if "createdAt._seconds" in purchases.columns:
             ts_col = "createdAt._seconds"
         elif "createdAt.seconds" in purchases.columns:
@@ -145,16 +145,13 @@ def build_members_df() -> pd.DataFrame:
         else:
             ts_col = None
 
-        # 2) tri du plus récent
         if ts_col:
             purchases.sort_values(ts_col, ascending=False, inplace=True)
 
-        # 3) clé composite last purchase
         purchases["_key"] = purchases["userId"] + "_" + purchases["childId"].fillna("")
         firsts = purchases.drop_duplicates("_key")
 
-        # 4) colonnes utiles
-        cols_keep = [
+        keep = [
             "_key",
             "membershipId",
             "sessionId",
@@ -165,10 +162,9 @@ def build_members_df() -> pd.DataFrame:
             "promoCode",
         ]
         if ts_col:
-            cols_keep.append(ts_col)
-        firsts = firsts[cols_keep]
+            keep.append(ts_col)
+        firsts = firsts[keep]
 
-        # 5) merge membres ↔ purchase
         members["_key"] = members["parentUid"] + "_" + members["id"].where(
             members["type"] == "child", ""
         )
@@ -180,14 +176,17 @@ def build_members_df() -> pd.DataFrame:
     ).str.strip()
     members["avatar"] = members["image_url"].apply(get_photo_url)
 
-    # Session name & days left
+    # Session name & days_left (correction tz-aware vs tz-naive) --
     if not sessions.empty and "sessionId" in members.columns:
-        members["session_name"] = members["sessionId"].map(sessions["name"].to_dict())
-        today = pd.Timestamp.utcnow()
-        end_dates = members["sessionId"].map(sessions["endDate"].to_dict())
-        members["days_left"] = (
-            pd.to_datetime(end_dates, errors="coerce") - today
-        ).dt.days
+        name_map = sessions["name"].to_dict() if "name" in sessions.columns else {}
+        end_map  = sessions["endDate"].to_dict() if "endDate" in sessions.columns else {}
+
+        members["session_name"] = members["sessionId"].map(name_map)
+
+        end_dates = members["sessionId"].map(end_map)
+        end_dt    = pd.to_datetime(end_dates, errors="coerce", utc=True)   # tz-aware
+        today     = pd.Timestamp.now(tz="UTC")                             # tz-aware
+        members["days_left"] = (end_dt - today).dt.days
 
     return members
 
@@ -208,7 +207,6 @@ if menu == "Vue d'ensemble":
     paid = data["purchases"][data["purchases"]["status"] == "paid"]
     c3.metric("💳 Paiements validés", len(paid))
 
-    # Histogramme nouveaux inscrits
     if "createdAt._seconds" in data["users"].columns:
         tmp = data["users"][["createdAt._seconds"]].copy()
         tmp["month"] = (
@@ -245,7 +243,6 @@ elif menu == "Membres":
     if query:
         df = df[df["full_name"].str.contains(query, case=False, na=False)]
 
-    # HTML table
     def row_html(r):
         badge = (
             '<span style="background:#1B998B;color:#fff;padding:2px 6px;border-radius:6px;font-size:11px;margin-left:6px;">ADMIN</span>'
@@ -257,9 +254,9 @@ elif menu == "Membres":
             )
         )
         avatar = f'<img src="{r.avatar}" style="width:34px;height:34px;border-radius:50%;object-fit:cover;margin-right:8px;vertical-align:middle;">'
-        paid = "✅" if r.status == "paid" else ("❌" if r.status == "pending" else "—")
+        paid   = "✅" if r.status == "paid" else ("❌" if r.status == "pending" else "—")
         amount = r.finalAmount or r.basePrice or "—"
-        typ = "Enfant" if r.type == "child" else "Parent"
+        typ    = "Enfant" if r.type == "child" else "Parent"
         return f"""
         <tr>
           <td>{avatar}{r.full_name or '—'}{badge}</td>
@@ -268,8 +265,7 @@ elif menu == "Membres":
           <td>{r.session_name or '—'}</td>
           <td>{amount}</td>
           <td style="text-align:center;">{paid}</td>
-        </tr>
-        """
+        </tr>"""
 
     header = """
     <thead>
@@ -316,23 +312,13 @@ else:
         st.dataframe(
             pur_df[
                 [
-                    "id",
-                    "userId",
-                    "childId",
-                    "membershipId",
-                    "sessionId",
-                    "paymentMethod",
-                    "status",
-                    "finalAmount",
-                    "promoCode",
-                    "date",
+                    "id", "userId", "childId", "membershipId", "sessionId",
+                    "paymentMethod", "status", "finalAmount", "promoCode", "date",
                 ]
-            ]
-            .sort_values("date", ascending=False),
+            ].sort_values("date", ascending=False),
             use_container_width=True,
         )
 
-        # Pie status
         pcount = pur_df["status"].value_counts().reset_index()
         pcount.columns = ["status", "count"]
         st.altair_chart(
