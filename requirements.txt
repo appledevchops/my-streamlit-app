@@ -1,2 +1,7 @@
-streamlit
+streamlit==1.44.1
 firebase-admin==6.5.0
+pandas
+altair
+google-auth
+google-auth-httplib2
+google-api-python-client     # <-- pour requêtes REST optionnelles
