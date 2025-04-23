@@ -1,138 +1,183 @@
-# streamlit_app.py – Dashboard Chops 📊
-"""Dashboard Streamlit connecté à Firestore (lecture seule).
-
-Fonctionnalités :
-- Auth simple par mot de passe (défini dans *Secrets*).
-- Navigation latérale (Vue d'ensemble • Inscriptions • Niveaux).
-- Graphiques Altair + métriques.
-- Requêtes Firestore mises en cache 10 min.
-- Code robuste si certains champs sont absents dans les documents.
-"""
-
+import streamlit as st
+import pandas as pd
 import altair as alt
+from datetime import datetime, date
+
+# ───────────────────────────────────────────────
+#  Firebase connexion (clé JSON + mot de passe)
+# ───────────────────────────────────────────────
 import firebase_admin
 from firebase_admin import credentials, firestore
-import pandas as pd
-import streamlit as st
-from datetime import datetime, timedelta
 
-# ╭───────────────────────────── Thème ─────────────────────────────╮
-# (Couleurs définies dans .streamlit/config.toml)
-# ╰─────────────────────────────────────────────────────────────────╯
-
-st.set_page_config(page_title="Chops Dashboard", page_icon="📊", layout="wide")
-
-# ╭──────────────────── Sécurité : mot de passe ────────────────────╮
-# Ajoute dans Secrets : dashboard_pwd = "MonSuperMDP"
-# ╰─────────────────────────────────────────────────────────────────╯
-if "auth" not in st.session_state:
-    pwd = st.text_input("Mot de passe", type="password")
-    if pwd != st.secrets.get("dashboard_pwd", ""):
-        st.warning("🔒 Entrez le mot de passe")
-        st.stop()
-    st.session_state.auth = True
-
-# ╭──────────────────── Connexion Firebase (read-only) ─────────────╮
-# Le bloc [firebase_reader] JSON est stocké dans *Secrets*
-# ╰─────────────────────────────────────────────────────────────────╯
 if not firebase_admin._apps:
-    cred = credentials.Certificate(st.secrets["firebase_reader"])
+    cred = credentials.Certificate(st.secrets["firebase"])
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()
 
-# ╭───────────────────── Utils Firestore → DataFrame ───────────────╮
-@st.cache_data(ttl=600)
+# ───────────────────────────────────────────────
+#  Auth très simple : mot de passe unique
+# ───────────────────────────────────────────────
+if "auth_ok" not in st.session_state:
+    pwd = st.text_input("🔒 Mot de passe", type="password")
+    if pwd != st.secrets["dashboard_pwd"]:
+        st.stop()
+    st.session_state.auth_ok = True
+
+# ───────────────────────────────────────────────
+#  Utils
+# ───────────────────────────────────────────────
+@st.cache_data(ttl=300)
 def load_collection(path: str) -> pd.DataFrame:
-    """Charge une collection ou sous-collection complète en DataFrame."""
+    """Charge *TOUTE* la collection en DataFrame aplatie.
+    Ajoute la colonne __id__ = doc.id
+    """
     docs = db.collection(path).stream()
-    rows = []
+    records = []
     for d in docs:
         data = d.to_dict() or {}
-        data["id"] = d.id  # ⟵ pratique pour les clés
-        rows.append(data)
-    return pd.json_normalize(rows)
+        data["__id__"] = d.id
+        # Conversions basiques
+        for k, v in list(data.items()):
+            if hasattr(v, "to_datetime"):
+                data[k] = v.to_datetime()
+            elif hasattr(v, "to_date"):
+                data[k] = v.to_date()
+        records.append(data)
+    if not records:
+        return pd.DataFrame()
+    return pd.json_normalize(records)
 
-# ╭──────────────────────── Sidebar nav ────────────────────────────╮
-page = st.sidebar.radio("Menu", ["Vue d'ensemble", "Inscriptions", "Niveaux & cours"], index=0)
+# Format dates jolies
+fmt_date = lambda x: x.strftime("%d/%m/%Y") if isinstance(x, (datetime, date)) else ""
 
-# ╭──────────────────────── Vue d’ensemble ─────────────────────────╯
-if page == "Vue d'ensemble":
-    st.header("📈 Vue d'ensemble")
+# ───────────────────────────────────────────────
+#  Chargement des 3 collections principales
+# ───────────────────────────────────────────────
+users_df      = load_collection("users")
+purchases_df  = load_collection("purchases")
+levels_df     = load_collection("levels")
 
-    # --- Users
-    users = load_collection("users")
-    if "isSubscription" not in users.columns:
-        users["isSubscription"] = False  # défaut
+# Sécurité : si champ absent on le crée vide pour éviter les KeyError
+for col in ["first_name", "last_name", "isSubscription"]:
+    if col not in users_df.columns:
+        users_df[col] = ""
+for col in ["membershipId", "createdAt", "status", "finalAmount", "sessionId"]:
+    if col not in purchases_df.columns:
+        purchases_df[col] = None
+for col in ["title", "level"]:
+    if col not in levels_df.columns:
+        levels_df[col] = ""
 
-    total_users = len(users)
-    active_members = users[users["isSubscription"] == True]
-    st.metric("Utilisateurs", total_users)
-    st.metric("Membres actifs", len(active_members))
+# ───────────────────────────────────────────────
+#  Jointure simple Purchases ↔ Users
+# ───────────────────────────────────────────────
+purchases_df["createdAt"] = pd.to_datetime(purchases_df["createdAt"], errors="coerce")
+latest_purchase = purchases_df.sort_values("createdAt").groupby("userId").tail(1)
+user_agg = users_df.merge(latest_purchase, left_on="__id__", right_on="userId", how="left", suffixes=("", "_p"))
 
-    # --- Purchases (30 derniers jours)
-    purchases = load_collection("purchases")
-    if not purchases.empty and "createdAt._seconds" in purchases.columns:
-        purchases["created_ts"] = pd.to_datetime(purchases["createdAt._seconds"], unit="s")
-        last_30 = purchases[purchases["created_ts"] >= datetime.utcnow() - timedelta(days=30)]
-        daily = last_30.groupby(last_30["created_ts"].dt.date)["finalAmount"].sum().reset_index()
-        daily.columns = ["jour", "CA"]
-        chart = (
-            alt.Chart(daily)
-            .mark_area(interpolate="monotone", opacity=0.7)
-            .encode(x="jour:T", y="CA:Q", tooltip=["jour:T", "CA:Q"])
-            .properties(height=250)
+# ───────────────────────────────────────────────
+#  Sidebar – filtres
+# ───────────────────────────────────────────────
+with st.sidebar:
+    st.header("Filtres")
+    levels_available = levels_df["title"].dropna().unique().tolist()
+    sel_levels = st.multiselect("Niveau", options=levels_available, default=levels_available)
+    status_opts = purchases_df["status"].dropna().unique().tolist()
+    sel_status = st.multiselect("Statut achat", options=status_opts, default=status_opts)
+
+# Filtrage
+filtered_users = user_agg.copy()
+if sel_status:
+    filtered_users = filtered_users[filtered_users["status"].isin(sel_status) | filtered_users["status"].isna()]
+
+# ───────────────────────────────────────────────
+#  Mise en page – onglets
+# ───────────────────────────────────────────────
+st.title("🏓 Dashboard Tennis de Table – Club Chops")
+
+tabs = st.tabs(["Vue d'ensemble", "Membres", "Niveaux & cours"])
+
+# ============================================================
+#  1) Vue d'ensemble
+# ============================================================
+with tabs[0]:
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Utilisateurs", len(users_df))
+    active_subs = users_df[users_df.get("isSubscription", False) == True]
+    col2.metric("Abonnés actifs", len(active_subs))
+    revenue = purchases_df[purchases_df["status"] == "paid"]["finalAmount"].sum()
+    col3.metric("Revenus payés", f"${revenue:,.0f}")
+
+    # Histogramme revenus par session
+    if not purchases_df.empty:
+        rev_session = purchases_df[purchases_df["status"] == "paid"].groupby("sessionId")["finalAmount"].sum().reset_index()
+        chart = alt.Chart(rev_session).mark_bar().encode(
+            x=alt.X("sessionId:N", title="Session"),
+            y=alt.Y("finalAmount:Q", title="Revenus ($)"),
+            tooltip=["sessionId", "finalAmount"]
         )
         st.altair_chart(chart, use_container_width=True)
+
+# ============================================================
+#  2) Tableau Membres (Ag‑Grid)
+# ============================================================
+with tabs[1]:
+    from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+
+    st.subheader("📋 Tableau membres + dernier achat")
+
+    if filtered_users.empty:
+        st.info("Aucune donnée à afficher avec ces filtres.")
     else:
-        st.info("Pas de données d’achats sur les 30 derniers jours.")
+        df_disp = filtered_users[[
+            "first_name", "last_name", "email", "phone_number", "membershipId",
+            "status", "finalAmount", "sessionId", "createdAt"
+        ]].rename(columns={
+            "first_name": "Prénom",
+            "last_name": "Nom",
+            "phone_number": "Téléphone",
+            "membershipId": "Abonnement",
+            "status": "Statut",
+            "finalAmount": "Montant ($)",
+            "sessionId": "Session",
+            "createdAt": "Souscrit le"
+        })
+        # Nice grid
+        gb = GridOptionsBuilder.from_dataframe(df_disp)
+        gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=20)
+        gb.configure_default_column(filter=True, sortable=True, resizable=True)
+        gb.configure_column("Montant ($)", type=["numericColumn"], valueFormatter="x.toLocaleString()")
+        grid = AgGrid(df_disp, gridOptions=gb.build(), enable_enterprise_modules=False, height=600)
 
-# ╭────────────────────── Inscriptions ─────────────────────────────╯
-elif page == "Inscriptions":
-    st.header("🧾 Inscriptions")
+# ============================================================
+#  3) Niveaux & cours
+# ============================================================
+with tabs[2]:
+    st.subheader("🏆 Niveaux & cours")
+    if levels_df.empty:
+        st.info("Aucun niveau trouvé dans la collection 'levels'.")
+    else:
+        st.dataframe(levels_df[["__id__", "title", "level", "description"]].rename(columns={
+            "__id__": "ID"
+        }), use_container_width=True)
 
-    df = load_collection("purchases")
-    if df.empty:
-        st.info("Aucune inscription.")
-        st.stop()
+        # Pie chart répartition par niveau (nombre de membres dont last purchase membershipId contient le level)
+        if not filtered_users.empty:
+            level_counts = []
+            for _, lvl in levels_df.iterrows():
+                title = lvl.get("title", str(lvl["__id__"]))
+                cnt = filtered_users[filtered_users["membershipId"].fillna("").str.contains(lvl["__id__"], na=False)].shape[0]
+                level_counts.append({"Niveau": title, "Membres": cnt})
+            lvl_df = pd.DataFrame(level_counts)
+            chart = alt.Chart(lvl_df).mark_arc(innerRadius=40).encode(
+                theta="Membres:Q",
+                color="Niveau:N",
+                tooltip=["Niveau", "Membres"]
+            )
+            st.altair_chart(chart, use_container_width=True)
 
-    # Préparation des champs utiles
-    df["Montant"] = df.get("finalAmount", df.get("amount", 0))
-    df["Date"] = pd.to_datetime(df.get("createdAt._seconds", 0), unit="s")
-
-    cols_display = [c for c in ["id", "userId", "membershipId", "status", "Montant", "Date"] if c in df.columns]
-    st.dataframe(df[cols_display], use_container_width=True)
-
-    # Histogramme des montants
-    hist = (
-        alt.Chart(df)
-        .mark_bar()
-        .encode(x=alt.X("Montant:Q", bin=alt.Bin(maxbins=20)), y="count()")
-    )
-    st.altair_chart(hist, use_container_width=True)
-
-# ╭───────────────────── Niveaux & cours ───────────────────────────╯
-else:
-    st.header("🏆 Niveaux & cours")
-
-    levels = load_collection("levels")
-    if levels.empty:
-        st.info("Pas de niveaux trouvés.")
-        st.stop()
-
-    show_cols = [c for c in ["id", "title", "level", "description"] if c in levels.columns]
-    st.dataframe(levels[show_cols], use_container_width=True)
-
-    # Camembert répartition par niveau (si champ 'level')
-    if "level" in levels.columns:
-        counts = levels["level"].value_counts().reset_index()
-        counts.columns = ["level", "nb"]
-        pie = (
-            alt.Chart(counts)
-            .mark_arc(innerRadius=40)
-            .encode(theta="nb:Q", color="level:N", tooltip=["level", "nb"])
-        )
-        st.altair_chart(pie, use_container_width=True)
-
-# ╭──────────────────────── Footer ────────────────────────────────╯
-st.caption("© 2025 Chops – Dashboard Streamlit + Firestore (read-only)")
+# ───────────────────────────────────────────────
+#  Footer tiny
+# ───────────────────────────────────────────────
+st.caption("Made with ❤️ + Streamlit — データは Firebase Firestore から")

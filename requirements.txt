@@ -4,4 +4,4 @@ pandas
 altair
 google-auth
 google-auth-httplib2
-google-api-python-client     # <-- pour requêtes REST optionnelles
+google-api-python-client     # <-- pour requêtes REST optionnellesstreamlit-aggrid==0.3.4
