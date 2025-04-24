@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-streamlit_app.py – Dashboard CHOPS v2.3.4
-• Correction : le tableau Membres s’affiche sans le bloc « code » parasite.
+streamlit_app.py – Dashboard CHOPS v2.4
+Look iOS-like (clair, cards, coins arrondis).
 """
 
 from __future__ import annotations
@@ -10,17 +10,17 @@ from functools import lru_cache
 from typing import Any, Dict, List
 
 import altair as alt
+import numpy as np
 import pandas as pd
 import pytz
 import streamlit as st
-
-import textwrap  # ← NEW : dé-indente les blocs HTML
+import textwrap
 
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
 
 # ─────────────────────────────────────────────────────────────
-# 1) PAGE CONFIG (doit être la 1ʳᵉ commande Streamlit)
+# PAGE CONFIG
 st.set_page_config(
     page_title="Dashboard CHOPS",
     page_icon="🏓",
@@ -28,51 +28,53 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# --- STYLE GLOBAL + table Membres ---
+# ─────────────────────────────────────────────────────────────
+# STYLE GLOBAL + table Membres
 st.markdown(
     """
 <style>
-/* ======= GLOBAL iOS-LIKE ======= */
-.st-emotion-cache-1y4p8pa,      /* container global */
-.st-emotion-cache-0,            /* beta Streamlit wrapper */
-.stDataFrame, .stAlert, .stMetric,
-.member-table {                          /* ta table aussi */
-    border-radius: 16px !important;      /* coins arrondis */
-    box-shadow: 0 4px 12px rgba(0,0,0,.06); /* ombre douce */
+/* ========== GLOBAL iOS-LIKE ========== */
+html, body, .stApp { background:#f2f2f7 !important; }
+
+/* Sidebar */
+section[data-testid="stSidebar"] > div:first-child {
+    background:#fff; border-right:1px solid #e6e6e6;
+}
+section[data-testid="stSidebar"] .st-emotion-cache-1wv5z7h,
+section[data-testid="stSidebar"] .st-emotion-cache-75m8jr {
+    color:#007aff !important;
 }
 
-button[kind="primary"] {
-    border-radius: 12px !important;
-    padding: 0.5rem 1rem !important;
-}
+/* Cards métriques */
+.metric-card{background:#fff;border:1px solid #e5e5e5;border-radius:12px;
+padding:1rem;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.04);}
+.metric-label{font-size:.9rem;font-weight:600;color:#6b7280;}
+.metric-value{font-size:1.6rem;font-weight:700;color:#1c1c1e;margin-top:.25rem;}
+.metric-delta{font-size:.8rem;}
+.metric-delta.up{color:#22c55e;} .metric-delta.down{color:#ef4444;}
 
-section[data-testid="stSidebar"] > div:nth-child(1) {
-    border-radius: 0 24px 24px 0;
-}
+/* Titres h2 */
+h2{margin-top:2.5rem;font-weight:700;}
 
-/* focus bleu iOS sur champs */
-input:focus, textarea:focus, select:focus {
-    border-color: #007aff !important;
-    box-shadow: 0 0 0 2px rgba(0,122,255,.3) !important;
-}
-
-/* ======= TA TABLE MEMBRES ======= */
-.member-table { width:100%; border-collapse:collapse; font-family:Arial, sans-serif; }
-.member-table th { background:#007aff; color:#fff; padding:10px; text-align:left; }
-.member-table td { padding:8px; border-bottom:1px solid #e0e0e0; vertical-align:middle; }
-.member-table tr:hover { background:#f5f5f5; transition:background .15s; }
-.avatar { width:40px; height:40px; border-radius:50%; object-fit:cover; margin-right:8px; vertical-align:middle; }
-.badge { display:inline-block; padding:3px 6px; border-radius:4px; color:#fff; font-size:12px; margin-left:6px; }
-.badge-admin  { background:#16a34a; }  /* vert Apple-ish */
-.badge-coach  { background:#ff9f0a; }  /* orange Apple-ish */
-.badge-paid   { background:#30d158; }  /* green success */
-.badge-pend   { background:#e5a50a; }  /* jaune attente */
-.card-link { text-decoration:none; font-size:18px; margin-left:8px; }
+/* Graphs */
+.stPlotlyChart,.stAltairChart,.st-vega-lite{
+background:#fff;padding:1rem;border-radius:12px;
+box-shadow:0 2px 6px rgba(0,0,0,.04);}
+    
+/* ===== TABLE MEMBRES ===== */
+.member-table{width:100%;border-collapse:collapse;font-family:Arial,sans-serif;}
+.member-table th{background:#007aff;color:#fff;padding:10px;text-align:left;}
+.member-table td{padding:8px;border-bottom:1px solid #e0e0e0;vertical-align:middle;}
+.member-table tr:hover{background:#f5f5f5;transition:background .15s;}
+.avatar{width:40px;height:40px;border-radius:50%;object-fit:cover;margin-right:8px;vertical-align:middle;}
+.badge{display:inline-block;padding:3px 6px;border-radius:4px;color:#fff;font-size:12px;margin-left:6px;}
+.badge-admin{background:#16a34a;}.badge-coach{background:#ff9f0a;}
+.badge-paid{background:#30d158;}.badge-pend{background:#eab308;}
+.card-link{text-decoration:none;font-size:18px;margin-left:8px;}
 </style>
 """,
     unsafe_allow_html=True,
 )
-
 # ─────────────────────────────────────────────────────────────
 
 # ╭────────── AUTH ──────────╮
@@ -108,7 +110,6 @@ def signed_url(path: str | None) -> str:
 
 
 def iso_date(ts) -> str:
-    """dd/mm/YYYY ou vide."""
     if ts is None or pd.isna(ts):
         return ""
     if isinstance(ts, (int, float)):
@@ -118,7 +119,6 @@ def iso_date(ts) -> str:
     return ts.strftime("%d/%m/%Y") if isinstance(ts, datetime) else str(ts)
 
 
-# ---------------- Firestore loaders -----------------
 @st.cache_data(show_spinner=True)
 def load_col(path: str) -> pd.DataFrame:
     return pd.json_normalize([d.to_dict() | {"id": d.id} for d in db.collection(path).stream()])
@@ -175,7 +175,7 @@ def load_all() -> Dict[str, pd.DataFrame]:
 
 data = load_all()
 
-# ╭────────── MEMBERS DF ──────────╮
+# ╭────────── MEMBRES DF ──────────╮
 @lru_cache(maxsize=1)
 def build_members_df() -> pd.DataFrame:
     users, children = data["users"].copy(), data["children"].copy()
@@ -184,7 +184,6 @@ def build_members_df() -> pd.DataFrame:
 
     users["type"], users["parentUid"] = "parent", users["id"]
 
-    # --- merge children ---
     if not children.empty:
         children["type"] = "child"
         children.rename(
@@ -200,9 +199,9 @@ def build_members_df() -> pd.DataFrame:
         for col in users.columns:
             if col not in children.columns:
                 children[col] = None
+
     members = pd.concat([users, children], ignore_index=True, sort=False)
 
-    # --- attach latest purchase ---
     if not purchases.empty:
         if "createdAt._seconds" in purchases:
             purchases.sort_values("createdAt._seconds", ascending=False, inplace=True)
@@ -213,12 +212,15 @@ def build_members_df() -> pd.DataFrame:
         )
         members = members.merge(firsts, on="_k", how="left", suffixes=("", "_p")).drop(columns="_k")
 
-    # --- cosmetics ---
-    members["full_name"] = (members["first_name"].fillna("") + " " + members["last_name"].fillna("")).str.strip()
+    members["full_name"] = (
+        members["first_name"].fillna("") + " " + members["last_name"].fillna("")
+    ).str.strip()
     members["avatar"] = members["image_url"].apply(signed_url)
 
     if not sessions.empty and "sessionId" in members:
-        end_dt = pd.to_datetime(members["sessionId"].map(sessions["endDate"]), errors="coerce", utc=True)
+        end_dt = pd.to_datetime(
+            members["sessionId"].map(sessions["endDate"]), errors="coerce", utc=True
+        )
         today = pd.Timestamp.now(tz=pytz.UTC)
         members["days_left"] = (end_dt - today).dt.days
         members["session_name"] = members["sessionId"].map(sessions["name"])
@@ -230,39 +232,70 @@ members_df = build_members_df()
 
 # ╭────────── SIDEBAR & MENU ──────────╮
 menu = st.sidebar.radio(
-    "📂 Menu",
+    "Navigation",
     ["Dashboard", "Membres", "Présences & Excédences", "Achats", "Sessions & Niveaux"],
 )
 
+# ╭────────── helper metric card ──────────╮
+def metric_card(col, label, value, delta, positive=True):
+    arrow = "▲" if positive else "▼"
+    cls = "up" if positive else "down"
+    col.markdown(
+        f"""
+<div class="metric-card">
+  <div class="metric-label">{label}</div>
+  <div class="metric-value">{value}</div>
+  <div class="metric-delta {cls}">{arrow} {delta}</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+
 # ╭────────────────── DASHBOARD ──────────────────╮
 if menu == "Dashboard":
-    st.header("📊 Vue d'ensemble")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("👥 Parents", len(data["users"]))
-    c2.metric("👶 Enfants", len(data["children"]))
-    c3.metric("💳 Achats", len(data["purchases"]))
-    c4.metric("✅ Payés", (data["purchases"]["status"] == "paid").sum())
+    st.header("Dashboard")
 
-    users_df = data["users"]
-    if "createdAt._seconds" in users_df:
-        tmp = users_df[["createdAt._seconds"]].copy()
-        tmp["month"] = (
-            pd.to_datetime(tmp["createdAt._seconds"], unit="s").dt.to_period("M").astype(str)
-        )
-    elif "createdAt" in users_df:
-        tmp = users_df[["createdAt"]].copy()
-        tmp["month"] = pd.to_datetime(tmp["createdAt"], errors="coerce").dt.to_period("M").astype(str)
-    else:
-        tmp = pd.DataFrame()
+    # -- métriques
+    c1, c2, c3, c4, c5 = st.columns(5, gap="small")
+    metric_card(c1, "Documents", "10.5 K", "+125", True)
+    metric_card(c2, "Annotations", "510", "−2", False)
+    metric_card(c3, "Accuracy", "87.9 %", "+0.1 %", True)
+    metric_card(c4, "Training Time", "1.5 h", "+10 m", False)
+    metric_card(c5, "Processing Time", "3 s", "−0.1 s", True)
 
-    if not tmp.empty:
-        chart = (
-            alt.Chart(tmp.groupby("month").size().reset_index(name="count"))
-            .mark_bar(size=20)
-            .encode(x=alt.X("month", sort=None), y="count")
-            .properties(height=300)
-        )
-        st.altair_chart(chart, use_container_width=True)
+    # -- charts démo ------------------------------------
+    st.subheader("Data Extraction")
+    df_line = pd.DataFrame(
+        {"x": np.arange(20), "a": np.random.randn(20).cumsum(), "b": np.random.randn(20).cumsum()}
+    )
+    chart1 = (
+        alt.Chart(df_line)
+        .transform_fold(["a", "b"])
+        .mark_line()
+        .encode(x="x:Q", y="value:Q", color="key:N")
+    )
+    st.altair_chart(chart1, use_container_width=True)
+
+    st.subheader("Model Training")
+    df_bar = pd.DataFrame(np.random.randn(20, 2), columns=["pos", "neg"])
+    chart2 = (
+        alt.Chart(df_bar.reset_index())
+        .transform_fold(["pos", "neg"])
+        .mark_bar()
+        .encode(x="index:O", y="value:Q", color="key:N")
+    )
+    st.altair_chart(chart2, use_container_width=True)
+
+    st.subheader("Data Annotation")
+    df_area = pd.DataFrame(np.random.randn(20, 2), columns=["x", "y"])
+    chart3 = (
+        alt.Chart(df_area.reset_index())
+        .transform_fold(["x", "y"])
+        .mark_area(opacity=0.5)
+        .encode(x="index:Q", y="value:Q", color="key:N")
+    )
+    st.altair_chart(chart3, use_container_width=True)
 
 # ╭────────────────── MEMBRES ──────────────────╮
 elif menu == "Membres":
@@ -300,9 +333,11 @@ elif menu == "Membres":
         avatar_html = f'<img src="{r.avatar}" class="avatar"/>'
         name_html = f"{avatar_html}{r.full_name}{badges}"
 
-        card_html = ""
-        if getattr(r, "studentCardUrl", None):
-            card_html = f'<a href="{r.studentCardUrl}" target="_blank" class="card-link">📇</a>'
+        card_html = (
+            f'<a href="{r.studentCardUrl}" target="_blank" class="card-link">📇</a>'
+            if getattr(r, "studentCardUrl", None)
+            else ""
+        )
 
         type_emoji = "👶" if r.type == "child" else "👨‍👩‍👧"
         rows.append(
@@ -378,9 +413,8 @@ elif menu == "Présences & Excédences":
             ins_df["date"] = pd.to_datetime(ins_df["date"], errors="coerce").apply(iso_date)
             st.subheader("Inscriptions récentes")
             st.dataframe(
-                ins_df[["uid", "training_uid", "type_utilisateur", "date"]].sort_values(
-                    "date", ascending=False
-                ),
+                ins_df[["uid", "training_uid", "type_utilisateur", "date"]]
+                .sort_values("date", ascending=False),
                 use_container_width=True,
             )
 
@@ -388,9 +422,8 @@ elif menu == "Présences & Excédences":
             par_df["date"] = pd.to_datetime(par_df["date"], errors="coerce").apply(iso_date)
             st.subheader("Participations")
             st.dataframe(
-                par_df[["uid", "training_uid", "type_utilisateur", "date"]].sort_values(
-                    "date", ascending=False
-                ),
+                par_df[["uid", "training_uid", "type_utilisateur", "date"]]
+                .sort_values("date", ascending=False),
                 use_container_width=True,
             )
 
@@ -442,9 +475,12 @@ elif menu == "Achats":
 # ╭────────────────── SESSIONS & NIVEAUX ──────────────────╮
 else:
     st.header("🗂 Sessions & Niveaux")
+
     st.subheader("Sessions")
     st.dataframe(
-        data["sessions"] if not data["sessions"].empty else pd.DataFrame(["Aucune session"]),
+        data["sessions"]
+        if not data["sessions"].empty
+        else pd.DataFrame(["Aucune session"]),
         use_container_width=True,
     )
 
