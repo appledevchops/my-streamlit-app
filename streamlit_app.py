@@ -17,6 +17,16 @@ import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
 
+
+
+# ╭────────── CONFIG UI ──────────╮
+st.set_page_config(
+    page_title="Dashboard CHOPS",
+    page_icon="🏓",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
 # ── En-tête du fichier, après vos imports ──
 st.markdown("""
 <style>
@@ -45,14 +55,6 @@ st.markdown("""
 }
 </style>
 """, unsafe_allow_html=True)
-
-# ╭────────── CONFIG UI ──────────╮
-st.set_page_config(
-    page_title="Dashboard CHOPS",
-    page_icon="🏓",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
 
 # ╭────────── AUTH ──────────╮
 if "auth" not in st.session_state:
