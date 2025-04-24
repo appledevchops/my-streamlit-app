@@ -28,25 +28,51 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# 2) CSS pour la table Membres stylée
+# --- STYLE GLOBAL + table Membres ---
 st.markdown(
     """
 <style>
+/* ======= GLOBAL iOS-LIKE ======= */
+.st-emotion-cache-1y4p8pa,      /* container global */
+.st-emotion-cache-0,            /* beta Streamlit wrapper */
+.stDataFrame, .stAlert, .stMetric,
+.member-table {                          /* ta table aussi */
+    border-radius: 16px !important;      /* coins arrondis */
+    box-shadow: 0 4px 12px rgba(0,0,0,.06); /* ombre douce */
+}
+
+button[kind="primary"] {
+    border-radius: 12px !important;
+    padding: 0.5rem 1rem !important;
+}
+
+section[data-testid="stSidebar"] > div:nth-child(1) {
+    border-radius: 0 24px 24px 0;
+}
+
+/* focus bleu iOS sur champs */
+input:focus, textarea:focus, select:focus {
+    border-color: #007aff !important;
+    box-shadow: 0 0 0 2px rgba(0,122,255,.3) !important;
+}
+
+/* ======= TA TABLE MEMBRES ======= */
 .member-table { width:100%; border-collapse:collapse; font-family:Arial, sans-serif; }
-.member-table th { background:#1B998B; color:#fff; padding:10px; text-align:left; }
+.member-table th { background:#007aff; color:#fff; padding:10px; text-align:left; }
 .member-table td { padding:8px; border-bottom:1px solid #e0e0e0; vertical-align:middle; }
-.member-table tr:hover { background:#f5f5f5; }
+.member-table tr:hover { background:#f5f5f5; transition:background .15s; }
 .avatar { width:40px; height:40px; border-radius:50%; object-fit:cover; margin-right:8px; vertical-align:middle; }
 .badge { display:inline-block; padding:3px 6px; border-radius:4px; color:#fff; font-size:12px; margin-left:6px; }
-.badge-admin  { background:#1B998B; }
-.badge-coach  { background:#F97316; }
-.badge-paid   { background:#3B82F6; }
-.badge-pend   { background:#EAB308; }
+.badge-admin  { background:#16a34a; }  /* vert Apple-ish */
+.badge-coach  { background:#ff9f0a; }  /* orange Apple-ish */
+.badge-paid   { background:#30d158; }  /* green success */
+.badge-pend   { background:#e5a50a; }  /* jaune attente */
 .card-link { text-decoration:none; font-size:18px; margin-left:8px; }
 </style>
 """,
     unsafe_allow_html=True,
 )
+
 # ─────────────────────────────────────────────────────────────
 
 # ╭────────── AUTH ──────────╮
