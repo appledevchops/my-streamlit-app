@@ -17,6 +17,35 @@ import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
 
+# ── En-tête du fichier, après vos imports ──
+st.markdown("""
+<style>
+.member-table { width:100%; border-collapse:collapse; font-family:Arial, sans-serif; }
+.member-table th {
+  background:#1B998B; color:#fff; padding:10px; text-align:left;
+}
+.member-table td {
+  padding:8px; border-bottom:1px solid #e0e0e0; vertical-align:middle;
+}
+.member-table tr:hover { background:#f5f5f5; }
+.avatar {
+  width:40px; height:40px; border-radius:50%; object-fit:cover;
+  margin-right:8px; vertical-align:middle;
+}
+.badge {
+  display:inline-block; padding:3px 6px; border-radius:4px;
+  color:#fff; font-size:12px; margin-left:6px;
+}
+.badge-admin  { background:#1B998B; }   /* turquoise */
+.badge-coach  { background:#F97316; }   /* orange */
+.badge-paid   { background:#3B82F6; }   /* bleu */
+.badge-pend   { background:#EAB308; }   /* jaune */
+.card-link {
+  text-decoration:none; font-size:18px; margin-left:8px;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # ╭────────── CONFIG UI ──────────╮
 st.set_page_config(
     page_title="Dashboard CHOPS",
@@ -193,34 +222,7 @@ if menu == "Dashboard":
         chart = chart.encode(x=alt.X("month", sort=None), y="count").properties(height=300)
         st.altair_chart(chart, use_container_width=True)
 
-# ── En-tête du fichier, après vos imports ──
-st.markdown("""
-<style>
-.member-table { width:100%; border-collapse:collapse; font-family:Arial, sans-serif; }
-.member-table th {
-  background:#1B998B; color:#fff; padding:10px; text-align:left;
-}
-.member-table td {
-  padding:8px; border-bottom:1px solid #e0e0e0; vertical-align:middle;
-}
-.member-table tr:hover { background:#f5f5f5; }
-.avatar {
-  width:40px; height:40px; border-radius:50%; object-fit:cover;
-  margin-right:8px; vertical-align:middle;
-}
-.badge {
-  display:inline-block; padding:3px 6px; border-radius:4px;
-  color:#fff; font-size:12px; margin-left:6px;
-}
-.badge-admin  { background:#1B998B; }   /* turquoise */
-.badge-coach  { background:#F97316; }   /* orange */
-.badge-paid   { background:#3B82F6; }   /* bleu */
-.badge-pend   { background:#EAB308; }   /* jaune */
-.card-link {
-  text-decoration:none; font-size:18px; margin-left:8px;
-}
-</style>
-""", unsafe_allow_html=True)
+
 
 # ── Section MEMBRES ──
 elif menu == "Membres":
