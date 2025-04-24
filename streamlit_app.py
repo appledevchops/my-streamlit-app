@@ -230,7 +230,6 @@ if menu == "Dashboard":
 elif menu == "Membres":
     st.header("👥 Member Management")
 
-    # filtres
     with st.sidebar:
         st.subheader("Filters")
         f_type = st.multiselect(
@@ -241,7 +240,6 @@ elif menu == "Membres":
         )
         query = st.text_input("Search name/email…")
 
-    # construction du DF filtré
     df = members_df[members_df["type"].isin(f_type)].copy()
     if query:
         df = df[
@@ -249,35 +247,26 @@ elif menu == "Membres":
             | df["email"].str.contains(query, case=False, na=False)
         ]
 
-    # génération des lignes HTML
     rows = []
     for _, r in df.iterrows():
-        # badges
         badges = ""
-        if r.get("isAdmin"):
-            badges += '<span class="badge badge-admin">ADMIN</span>'
-        if r.get("isCoach"):
-            badges += '<span class="badge badge-coach">COACH</span>'
-        if r.status == "paid":
-            badges += '<span class="badge badge-paid">✅ Paid</span>'
+        if r.get("isAdmin"):   badges += '<span class="badge badge-admin">ADMIN</span>'
+        if r.get("isCoach"):   badges += '<span class="badge badge-coach">COACH</span>'
+        if r.status == "paid": badges += '<span class="badge badge-paid">✅ Paid</span>'
         elif r.status == "pending":
             badges += '<span class="badge badge-pend">⏱ Pending</span>'
 
-        # avatar + nom
         avatar_html = f'<img src="{r.avatar}" class="avatar"/>'
         name_html   = f"{avatar_html}{r.full_name}{badges}"
 
-        # student card link (si présent)
         card_html = ""
         if getattr(r, "studentCardUrl", None):
             card_html = (
-              f'<a href="{r.studentCardUrl}" target="_blank" class="card-link">'
-              "📇</a>"
+                f'<a href="{r.studentCardUrl}" target="_blank" class="card-link">'
+                "📇</a>"
             )
 
-        # type emoji
         type_emoji = "👶" if r.type == "child" else "👨‍👩‍👧"
-
         rows.append(f"""
         <tr>
           <td>{name_html}</td>
@@ -292,30 +281,24 @@ elif menu == "Membres":
         </tr>
         """)
 
-    # rendu final
     header = """
     <thead>
       <tr>
-        <th>👤 Name</th>
-        <th>🏷 Type</th>
-        <th>✉️ Email</th>
-        <th>📞 Phone</th>
-        <th>🏠 Address</th>
-        <th>🎂 Birth</th>
-        <th>📅 Session</th>
-        <th>⏳ Days Left</th>
-        <th>📇 Card</th>
+        <th>👤 Name</th><th>🏷 Type</th><th>✉️ Email</th><th>📞 Phone</th>
+        <th>🏠 Address</th><th>🎂 Birth</th><th>📅 Session</th>
+        <th>⏳ Days Left</th><th>📇 Card</th>
       </tr>
     </thead>
     """
     html = (
-      "<div style='overflow-x:auto;'>"
-      "<table class='member-table'>"
+        "<div style='overflow-x:auto;'>"
+        "<table class='member-table'>"
         + header +
         "<tbody>" + "\n".join(rows) + "</tbody>"
-      "</table></div>"
+        "</table></div>"
     )
     st.markdown(html, unsafe_allow_html=True)
+
 
 
 # ╭────────────────── PRÉSENCES & EXCÉDENCES ──────────────────╮
