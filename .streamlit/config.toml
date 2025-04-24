@@ -1,6 +1,7 @@
 [theme]
-base = "dark"               # thème sombre
-primaryColor = "#22c55e"    # vert accent (inspiré Tailwind emerald-500)
-secondaryBackground = "#212121"
-textColor = "#e5e5e5"
-font = "sans serif"
+base                = "light"
+primaryColor        = "#007aff"
+backgroundColor     = "#f2f2f7"
+secondaryBackground = "#ffffff"
+textColor           = "#1c1c1e"
+font                = "sans serif"

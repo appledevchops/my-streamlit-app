@@ -1,8 +1,15 @@
-streamlit==1.44.1
-firebase-admin==6.5.0
-pandas
-altair
-google-auth
-google-auth-httplib2
-google-api-python-client     # <-- pour requêtes REST optionnellesstreamlit-aggrid==0.3.4
-pytz
+# ── cœur de l’app ───────────────────────────────────────────────
+streamlit==1.44.1          # UI
+firebase-admin==6.5.0      # accès Firestore / Storage
+pandas>=2.2,<3.0           # dataframes
+numpy>=1.26                # utilisé pour les données aléatoires dans les graphiques
+altair>=5.2                # visualisations
+pytz>=2024.1               # gestion des fuseaux
+
+# ── auth Google (souvent installé en sous-dépendance, mais on épingle) ──
+google-auth>=2.28
+google-auth-httplib2>=0.2.0
+google-api-python-client>=2.126   # si tu fais encore des appels REST directs
+
+# ── composants Streamlit additionnels ───────────────────────────
+streamlit-aggrid==0.3.4    # si tu l’utilises ailleurs pour des tables interactives
