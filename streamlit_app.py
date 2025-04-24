@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-streamlit_app.py – Dashboard CHOPS v2.3.1
-• Corrige l’affichage des NaN dans la vue Membres et assure inclusion des enfants sans achat.
+streamlit_app.py – Dashboard CHOPS v2.3.2
+• Affichage complet des membres, sans filtrage par statut paiement.
 """
 
 from __future__ import annotations
@@ -27,9 +27,7 @@ st.set_page_config(
 
 # ╭────────── AUTH ──────────╮
 if "auth" not in st.session_state:
-    if st.text_input("🔑 Mot de passe", type="password") != st.secrets.get(
-        "dashboard_pwd", ""
-    ):
+    if st.text_input("🔑 Mot de passe", type="password") != st.secrets.get("dashboard_pwd", ""):
         st.stop()
     st.session_state.auth = True
 
@@ -67,9 +65,7 @@ def iso_date(ts) -> str:
 
 @st.cache_data(show_spinner=True)
 def load_col(path: str) -> pd.DataFrame:
-    return pd.json_normalize(
-        [d.to_dict() | {"id": d.id} for d in db.collection(path).stream()]
-    )
+    return pd.json_normalize([d.to_dict() | {"id": d.id} for d in db.collection(path).stream()])
 
 def load_children(users_df: pd.DataFrame) -> pd.DataFrame:
     rows: List[Dict[str, Any]] = []
@@ -87,13 +83,12 @@ def load_subrows(users_df: pd.DataFrame, sub: str) -> pd.DataFrame:
 
 @st.cache_data(show_spinner=True)
 def load_all() -> Dict[str, pd.DataFrame]:
-    users        = load_col("users")
-    children     = load_children(users)
-    purchases    = load_col("purchases")
-    sessions     = load_col("sessionConfigs")
-    levels       = load_col("levels")
+    users     = load_col("users")
+    children  = load_children(users)
+    purchases = load_col("purchases")
+    sessions  = load_col("sessionConfigs")
+    levels    = load_col("levels")
 
-    # trainings
     trainings = pd.json_normalize(
         [
             d.to_dict() | {"id": d.id, "level": lvl}
@@ -101,7 +96,6 @@ def load_all() -> Dict[str, pd.DataFrame]:
             for d in db.collection(f"levels/{lvl}/trainings").stream()
         ]
     )
-
     exceedances    = load_subrows(users, "exceedances")
     inscriptions   = load_subrows(users, "inscriptions")
     participations = load_subrows(users, "participations")
@@ -157,43 +151,23 @@ def build_members_df() -> pd.DataFrame:
             + "_"
             + members["id"].where(members["type"] == "child", "")
         )
-        members = (
-            members.merge(firsts, on="_key", how="left", suffixes=("", "_p"))
-            .drop(columns="_key")
-        )
+        members = members.merge(firsts, on="_key", how="left", suffixes=("", "_p")).drop(columns="_key")
 
-    # enrichissements
-    members["full_name"] = (
-        members["first_name"].fillna("") + " " + members["last_name"].fillna("")
-    ).str.strip()
-    members["avatar"] = members["image_url"].apply(signed_url)
+    members["full_name"] = (members["first_name"].fillna("") + " " + members["last_name"].fillna("")).str.strip()
+    members["avatar"]    = members["image_url"].apply(signed_url)
 
     if not sessions.empty and "sessionId" in members:
-        end_dt = pd.to_datetime(
-            members["sessionId"].map(sessions["endDate"]), errors="coerce", utc=True
-        )
-        today = pd.Timestamp.now(tz=pytz.UTC)
-        members["days_left"] = (end_dt - today).dt.days
+        end_dt = pd.to_datetime(members["sessionId"].map(sessions["endDate"]), errors="coerce", utc=True)
+        today  = pd.Timestamp.now(tz=pytz.UTC)
+        members["days_left"]    = (end_dt - today).dt.days
         members["session_name"] = members["sessionId"].map(sessions["name"])
-
-    # Catégorise le statut paiement pour inclure les NaN
-    members["status_cat"] = members["status"].fillna("no_purchase")
 
     return members
 
 members_df = build_members_df()
 
 # ╭────────── SIDEBAR ──────────╮
-menu = st.sidebar.radio(
-    "📂 Menu",
-    [
-        "Dashboard",
-        "Membres",
-        "Présences & Excédences",
-        "Achats",
-        "Sessions & Niveaux",
-    ],
-)
+menu = st.sidebar.radio("📂 Menu", ["Dashboard", "Membres", "Présences & Excédences", "Achats", "Sessions & Niveaux"])
 
 # ╭────────────────── DASHBOARD ──────────────────╮
 if menu == "Dashboard":
@@ -207,29 +181,17 @@ if menu == "Dashboard":
     users_df = data["users"]
     if "createdAt._seconds" in users_df:
         tmp = users_df[["createdAt._seconds"]].copy()
-        tmp["month"] = (
-            pd.to_datetime(tmp["createdAt._seconds"], unit="s")
-            .dt.to_period("M")
-            .astype(str)
-        )
+        tmp["month"] = pd.to_datetime(tmp["createdAt._seconds"], unit="s").dt.to_period("M").astype(str)
     elif "createdAt" in users_df:
         tmp = users_df[["createdAt"]].copy()
-        tmp["month"] = (
-            pd.to_datetime(tmp["createdAt"], errors="coerce")
-            .dt.to_period("M")
-            .astype(str)
-        )
+        tmp["month"] = pd.to_datetime(tmp["createdAt"], errors="coerce").dt.to_period("M").astype(str)
     else:
         tmp = pd.DataFrame()
 
     if not tmp.empty:
-        st.altair_chart(
-            alt.Chart(tmp.groupby("month").size().reset_index(name="count"))
-            .mark_bar(size=20)
-            .encode(x=alt.X("month", sort=None), y="count")
-            .properties(height=300),
-            use_container_width=True,
-        )
+        chart = alt.Chart(tmp.groupby("month").size().reset_index(name="count")).mark_bar(size=20)
+        chart = chart.encode(x=alt.X("month", sort=None), y="count").properties(height=300)
+        st.altair_chart(chart, use_container_width=True)
 
 # ╭────────────────── MEMBRES ──────────────────╮
 elif menu == "Membres":
@@ -237,24 +199,11 @@ elif menu == "Membres":
 
     with st.sidebar:
         st.subheader("Filtres membres")
-        f_type = st.multiselect(
-            "Type", ["parent", "child"], default=["parent", "child"]
-        )
-        f_status = st.multiselect(
-            "Statut paiement",
-            ["paid", "pending", "no_purchase"],
-            default=["paid", "pending", "no_purchase"],
-            format_func=lambda x: {
-                "paid": "Payé",
-                "pending": "En attente",
-                "no_purchase": "Sans achat"
-            }[x],
-        )
-        query = st.text_input("Recherche nom/email…")
+        f_type = st.multiselect("Type", ["parent", "child"], default=["parent", "child"])
+        query  = st.text_input("Recherche nom/email…")
 
     df = members_df.copy()
     df = df[df["type"].isin(f_type)]
-    df = df[df["status_cat"].isin(f_status)]
 
     if query:
         df = df[
@@ -262,73 +211,8 @@ elif menu == "Membres":
             | df["email"].str.contains(query, case=False, na=False)
         ]
 
-    # helper pour valeurs manquantes
-    def safe(v):
-        return "—" if v is None or (isinstance(v, float) and pd.isna(v)) or str(v).strip() == "" else v
-
-    # badge couleur
-    def badge(lbl, color):
-        return (
-            f'<span style="background:{color};color:#fff;padding:2px 6px;'
-            f'border-radius:6px;font-size:11px;margin-left:4px;">{lbl}'
-            f'</span>'
-        )
-
-    def row_html(r):
-        badg = (
-            (badge("ADMIN", "#1B998B") if r.get("isAdmin") else "")
-            + (badge("COACH", "#F97316") if r.get("isCoach") else "")
-        )
-        avatar = (
-            f'<img src="{r.avatar}" style="width:32px;height:32px;border-radius:50%;'
-            f'object-fit:cover;margin-right:8px;vertical-align:middle;">'
-        )
-        role = "Enfant" if r.type == "child" else "Parent"
-        status_icon = (
-            "✅" if r.status == "paid" else ("❌" if r.status == "pending" else "—")
-        )
-
-        amount = (
-            safe(r.finalAmount)
-            if not pd.isna(r.finalAmount)
-            else safe(r.basePrice)
-        )
-        days = (
-            "—"
-            if pd.isna(r.days_left)
-            else ("Expiré" if r.days_left < 0 else f"{int(r.days_left)} j")
-        )
-
-        return f"""
-        <tr>
-          <td>{avatar}{safe(r.full_name)}{badg}</td>
-          <td>{role}</td>
-          <td>{safe(r.email)}</td>
-          <td>{safe(r.phone_number)}</td>
-          <td>{safe(r.address)}</td>
-          <td>{safe(r.birth_date)}</td>
-          <td>{safe(r.membershipId)}</td>
-          <td>{safe(r.session_name)}</td>
-          <td>{days}</td>
-          <td>{safe(r.paymentMethod)}</td>
-          <td>{amount}</td>
-          <td style="text-align:center;">{status_icon}</td>
-        </tr>"""
-
-    header = """
-    <thead><tr style="background:#F5F5F5;">
-      <th>Nom</th><th>Type</th><th>Email</th><th>Tél.</th><th>Adresse</th><th>Naissance</th>
-      <th>Abonnement</th><th>Session</th><th>Jours</th><th>Méthode</th><th>Montant</th><th>Payé ?</th>
-    </tr></thead>"""
-    rows_html = "\n".join(df.apply(row_html, axis=1))
-
-    st.markdown(
-        "<div style='overflow-x:auto;'>" +
-        "<table style='width:100%;border-collapse:collapse;font-size:14px;'>" +
-        header +
-        f"<tbody>{rows_html}</tbody></table></div>",
-        unsafe_allow_html=True,
-    )
+    # Affichage robuste de TOUTES les lignes
+    st.dataframe(df, use_container_width=True)
 
 # ╭────────────────── PRÉSENCES & EXCÉDENCES ──────────────────╮
 elif menu == "Présences & Excédences":
