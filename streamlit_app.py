@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-streamlit_app.py – Dashboard CHOPS v2.3.2
-• Affichage complet des membres, sans filtrage par statut paiement.
+streamlit_app.py – Dashboard CHOPS v2.3.3
+• Dashboard avec section Membres stylée.
 """
 
 from __future__ import annotations
@@ -17,9 +17,8 @@ import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
 
-
-
-# ╭────────── CONFIG UI ──────────╮
+# ──────────────────────────────────────────────────────────────────────────────
+# 1) Page config (must be the first Streamlit command)
 st.set_page_config(
     page_title="Dashboard CHOPS",
     page_icon="🏓",
@@ -27,34 +26,23 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── En-tête du fichier, après vos imports ──
+# 2) CSS for the styled members table
 st.markdown("""
 <style>
 .member-table { width:100%; border-collapse:collapse; font-family:Arial, sans-serif; }
-.member-table th {
-  background:#1B998B; color:#fff; padding:10px; text-align:left;
-}
-.member-table td {
-  padding:8px; border-bottom:1px solid #e0e0e0; vertical-align:middle;
-}
+.member-table th { background:#1B998B; color:#fff; padding:10px; text-align:left; }
+.member-table td { padding:8px; border-bottom:1px solid #e0e0e0; vertical-align:middle; }
 .member-table tr:hover { background:#f5f5f5; }
-.avatar {
-  width:40px; height:40px; border-radius:50%; object-fit:cover;
-  margin-right:8px; vertical-align:middle;
-}
-.badge {
-  display:inline-block; padding:3px 6px; border-radius:4px;
-  color:#fff; font-size:12px; margin-left:6px;
-}
-.badge-admin  { background:#1B998B; }   /* turquoise */
-.badge-coach  { background:#F97316; }   /* orange */
-.badge-paid   { background:#3B82F6; }   /* bleu */
-.badge-pend   { background:#EAB308; }   /* jaune */
-.card-link {
-  text-decoration:none; font-size:18px; margin-left:8px;
-}
+.avatar { width:40px; height:40px; border-radius:50%; object-fit:cover; margin-right:8px; vertical-align:middle; }
+.badge { display:inline-block; padding:3px 6px; border-radius:4px; color:#fff; font-size:12px; margin-left:6px; }
+.badge-admin  { background:#1B998B; }
+.badge-coach  { background:#F97316; }
+.badge-paid   { background:#3B82F6; }
+.badge-pend   { background:#EAB308; }
+.card-link { text-decoration:none; font-size:18px; margin-left:8px; }
 </style>
 """, unsafe_allow_html=True)
+# ──────────────────────────────────────────────────────────────────────────────
 
 # ╭────────── AUTH ──────────╮
 if "auth" not in st.session_state:
@@ -114,11 +102,11 @@ def load_subrows(users_df: pd.DataFrame, sub: str) -> pd.DataFrame:
 
 @st.cache_data(show_spinner=True)
 def load_all() -> Dict[str, pd.DataFrame]:
-    users     = load_col("users")
-    children  = load_children(users)
-    purchases = load_col("purchases")
-    sessions  = load_col("sessionConfigs")
-    levels    = load_col("levels")
+    users        = load_col("users")
+    children     = load_children(users)
+    purchases    = load_col("purchases")
+    sessions     = load_col("sessionConfigs")
+    levels       = load_col("levels")
 
     trainings = pd.json_normalize(
         [
@@ -127,6 +115,7 @@ def load_all() -> Dict[str, pd.DataFrame]:
             for d in db.collection(f"levels/{lvl}/trainings").stream()
         ]
     )
+
     exceedances    = load_subrows(users, "exceedances")
     inscriptions   = load_subrows(users, "inscriptions")
     participations = load_subrows(users, "participations")
@@ -184,12 +173,16 @@ def build_members_df() -> pd.DataFrame:
         )
         members = members.merge(firsts, on="_key", how="left", suffixes=("", "_p")).drop(columns="_key")
 
-    members["full_name"] = (members["first_name"].fillna("") + " " + members["last_name"].fillna("")).str.strip()
-    members["avatar"]    = members["image_url"].apply(signed_url)
+    members["full_name"] = (
+        members["first_name"].fillna("") + " " + members["last_name"].fillna("")
+    ).str.strip()
+    members["avatar"] = members["image_url"].apply(signed_url)
 
     if not sessions.empty and "sessionId" in members:
-        end_dt = pd.to_datetime(members["sessionId"].map(sessions["endDate"]), errors="coerce", utc=True)
-        today  = pd.Timestamp.now(tz=pytz.UTC)
+        end_dt = pd.to_datetime(
+            members["sessionId"].map(sessions["endDate"]), errors="coerce", utc=True
+        )
+        today = pd.Timestamp.now(tz=pytz.UTC)
         members["days_left"]    = (end_dt - today).dt.days
         members["session_name"] = members["sessionId"].map(sessions["name"])
 
@@ -197,8 +190,11 @@ def build_members_df() -> pd.DataFrame:
 
 members_df = build_members_df()
 
-# ╭────────── SIDEBAR ──────────╮
-menu = st.sidebar.radio("📂 Menu", ["Dashboard", "Membres", "Présences & Excédences", "Achats", "Sessions & Niveaux"])
+# ╭────────── SIDEBAR & MENU ──────────╮
+menu = st.sidebar.radio(
+    "📂 Menu",
+    ["Dashboard", "Membres", "Présences & Excédences", "Achats", "Sessions & Niveaux"],
+)
 
 # ╭────────────────── DASHBOARD ──────────────────╮
 if menu == "Dashboard":
@@ -212,21 +208,31 @@ if menu == "Dashboard":
     users_df = data["users"]
     if "createdAt._seconds" in users_df:
         tmp = users_df[["createdAt._seconds"]].copy()
-        tmp["month"] = pd.to_datetime(tmp["createdAt._seconds"], unit="s").dt.to_period("M").astype(str)
+        tmp["month"] = (
+            pd.to_datetime(tmp["createdAt._seconds"], unit="s")
+            .dt.to_period("M")
+            .astype(str)
+        )
     elif "createdAt" in users_df:
         tmp = users_df[["createdAt"]].copy()
-        tmp["month"] = pd.to_datetime(tmp["createdAt"], errors="coerce").dt.to_period("M").astype(str)
+        tmp["month"] = (
+            pd.to_datetime(tmp["createdAt"], errors="coerce")
+            .dt.to_period("M")
+            .astype(str)
+        )
     else:
         tmp = pd.DataFrame()
 
     if not tmp.empty:
-        chart = alt.Chart(tmp.groupby("month").size().reset_index(name="count")).mark_bar(size=20)
-        chart = chart.encode(x=alt.X("month", sort=None), y="count").properties(height=300)
+        chart = (
+            alt.Chart(tmp.groupby("month").size().reset_index(name="count"))
+            .mark_bar(size=20)
+            .encode(x=alt.X("month", sort=None), y="count")
+            .properties(height=300)
+        )
         st.altair_chart(chart, use_container_width=True)
 
-
-
-# ── Section MEMBRES ──
+# ╭────────────────── MEMBRES (stylé) ──────────────────╮
 elif menu == "Membres":
     st.header("👥 Member Management")
 
@@ -236,7 +242,7 @@ elif menu == "Membres":
             "Type",
             ["parent", "child"],
             default=["parent", "child"],
-            format_func=lambda x: {"parent":"👨‍👩‍👧 Parent","child":"👶 Child"}[x]
+            format_func=lambda x: {"parent":"👨‍👩‍👧 Parent","child":"👶 Child"}[x],
         )
         query = st.text_input("Search name/email…")
 
@@ -247,12 +253,15 @@ elif menu == "Membres":
             | df["email"].str.contains(query, case=False, na=False)
         ]
 
-    rows = []
+    rows: list[str] = []
     for _, r in df.iterrows():
         badges = ""
-        if r.get("isAdmin"):   badges += '<span class="badge badge-admin">ADMIN</span>'
-        if r.get("isCoach"):   badges += '<span class="badge badge-coach">COACH</span>'
-        if r.status == "paid": badges += '<span class="badge badge-paid">✅ Paid</span>'
+        if r.get("isAdmin"):
+            badges += '<span class="badge badge-admin">ADMIN</span>'
+        if r.get("isCoach"):
+            badges += '<span class="badge badge-coach">COACH</span>'
+        if r.status == "paid":
+            badges += '<span class="badge badge-paid">✅ Paid</span>'
         elif r.status == "pending":
             badges += '<span class="badge badge-pend">⏱ Pending</span>'
 
@@ -299,8 +308,6 @@ elif menu == "Membres":
     )
     st.markdown(html, unsafe_allow_html=True)
 
-
-
 # ╭────────────────── PRÉSENCES & EXCÉDENCES ──────────────────╮
 elif menu == "Présences & Excédences":
     st.header("📅 Présences & excédences")
@@ -325,28 +332,21 @@ elif menu == "Présences & Excédences":
                 inplace=True,
             )
             st.subheader("Excédences")
-            st.dataframe(
-                ex_df[["Utilisateur", "Cours", "Déjà fait", "Quota", "Date"]],
-                use_container_width=True,
-            )
+            st.dataframe(ex_df[["Utilisateur", "Cours", "Déjà fait", "Quota", "Date"]], use_container_width=True)
 
         if not ins_df.empty:
             ins_df["date"] = pd.to_datetime(ins_df["date"], errors="coerce").apply(iso_date)
             st.subheader("Inscriptions récentes")
-            st.dataframe(
-                ins_df[["uid", "training_uid", "type_utilisateur", "date"]]
-                .sort_values("date", ascending=False),
-                use_container_width=True,
-            )
+            st.dataframe(ins_df[["uid", "training_uid", "type_utilisateur", "date"]]
+                         .sort_values("date", ascending=False),
+                         use_container_width=True)
 
         if not par_df.empty:
             par_df["date"] = pd.to_datetime(par_df["date"], errors="coerce").apply(iso_date)
             st.subheader("Participations")
-            st.dataframe(
-                par_df[["uid", "training_uid", "type_utilisateur", "date"]]
-                .sort_values("date", ascending=False),
-                use_container_width=True,
-            )
+            st.dataframe(par_df[["uid", "training_uid", "type_utilisateur", "date"]]
+                         .sort_values("date", ascending=False),
+                         use_container_width=True)
 
 # ╭────────────────── ACHATS ──────────────────╮
 elif menu == "Achats":
@@ -374,20 +374,17 @@ elif menu == "Achats":
             pcount.columns = ["status", "count"]
             st.altair_chart(
                 alt.Chart(pcount)
-                .mark_arc(innerRadius=60)
-                .encode(theta="count", color="status", tooltip=["status", "count"]),
+                   .mark_arc(innerRadius=60)
+                   .encode(theta="count", color="status", tooltip=["status","count"]),
                 use_container_width=True,
             )
 
 # ╭────────────────── SESSIONS & NIVEAUX ──────────────────╮
 else:
     st.header("🗂 Sessions & Niveaux")
-
     st.subheader("Sessions")
-    st.dataframe(
-        data["sessions"] if not data["sessions"].empty else pd.DataFrame(["Aucune session"]),
-        use_container_width=True,
-    )
+    st.dataframe(data["sessions"] if not data["sessions"].empty else pd.DataFrame(["Aucune session"]),
+                 use_container_width=True)
 
     st.markdown("---")
     st.subheader("Niveaux & trainings")
@@ -395,7 +392,5 @@ else:
     if trainings.empty:
         st.info("Aucun training défini.")
     else:
-        st.dataframe(
-            trainings.sort_values(["level", "day_of_week", "start_time"]),
-            use_container_width=True,
-        )
+        st.dataframe(trainings.sort_values(["level","day_of_week","start_time"]),
+                     use_container_width=True)
