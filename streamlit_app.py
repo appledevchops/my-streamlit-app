@@ -1,10 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-streamlit_app.py – Dashboard CHOPS v2.4
-Look iOS-like (clair, cards, coins arrondis).
-"""
+streamlit_app.py – Dashboard CHOPS v2.5
+Ajout d’un **sidebar iOS / dark‑glass** façon mock‑up :
+  • Carte profil (avatar rond, nom, handle, compteurs)
+  • Boutons Follow / Message
+  • Menu vertical avec icônes + highlight bleu (hover & sélection)
 
+Aucun changement sur la logique métier ; seules la CSS et la construction du
+sidebar ont été revues.
+"""
 from __future__ import annotations
+
 from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Any, Dict, List
@@ -19,8 +25,7 @@ import textwrap
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
 
-# ─────────────────────────────────────────────────────────────
-# PAGE CONFIG
+# ──────────────────────────────── PAGE CONFIG
 st.set_page_config(
     page_title="Dashboard CHOPS",
     page_icon="🏓",
@@ -28,62 +33,91 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ─────────────────────────────────────────────────────────────
-# STYLE GLOBAL + table Membres
+# ============================================================================
+#                               CSS  GLOBAL
+# ============================================================================
+# NOTE : toutes les classes pré‑existantes sont conservées ;
+#         on ajoute simplement de nouveaux styles pour le sidebar.
 st.markdown(
     """
 <style>
-/* ========== GLOBAL iOS-LIKE ========== */
-html, body, .stApp { background:#f2f2f7 !important; }
+/* ===== ROOT (fond gris clair façon iOS) ===== */
+html, body, .stApp {background:#f2f2f7 !important;}
 
-/* Sidebar */
+/* ===== SIDEBAR DARK GLASS ===== */
 section[data-testid="stSidebar"] > div:first-child {
-    background:#fff; border-right:1px solid #e6e6e6;
-}
-section[data-testid="stSidebar"] .st-emotion-cache-1wv5z7h,
-section[data-testid="stSidebar"] .st-emotion-cache-75m8jr {
-    color:#007aff !important;
+    background:#0f172a;               /* bleu‑gris très foncé */
+    color:#f8fafc;
+    border-right:none;
+    padding:0;                        /* on gère nous‑mêmes les espacements */
 }
 
-/* Cards métriques */
-.metric-card{background:#fff;border:1px solid #e5e5e5;border-radius:12px;
-padding:1rem;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.04);}
-.metric-label{font-size:.9rem;font-weight:600;color:#6b7280;}
-.metric-value{font-size:1.6rem;font-weight:700;color:#1c1c1e;margin-top:.25rem;}
-.metric-delta{font-size:.8rem;}
-.metric-delta.up{color:#22c55e;} .metric-delta.down{color:#ef4444;}
+/* On masque le titre du radio d'origine ("Navigation") */
+section[data-testid="stSidebar"] h2,                       /* éventuels headers */
+section[data-testid="stSidebar"] label[data-baseweb="radio"] > div:first-child {display:none;}
 
-/* Titres h2 */
+/* ====== CARTE PROFIL ====== */
+.profile-card{padding:2rem 1.5rem 1rem;text-align:center;border-bottom:1px solid rgba(255,255,255,.05);}
+.profile-card img{width:72px;height:72px;border-radius:50%;object-fit:cover;box-shadow:0 0 0 3px #38bdf8;}
+.profile-card .name{font-size:1.15rem;font-weight:600;margin-top:.75rem;}
+.profile-card .handle{font-size:.85rem;color:#94a3b8;margin-top:-.15rem;}
+.profile-stats{display:flex;justify-content:space-between;margin-top:1rem;}
+.profile-stats div{flex:1;font-size:.75rem;color:#cbd5e1;}
+.profile-stats span{display:block;font-weight:700;font-size:1rem;color:#f8fafc;}
+.profile-buttons button{width:100%;margin-top:.75rem;border:none;border-radius:6px;padding:.5rem .75rem;font-size:.8rem;font-weight:600;cursor:pointer;transition:background .15s;color:#0f172a;}
+.profile-buttons button.follow{background:#38bdf8;}
+.profile-buttons button.message{background:#e5e7eb;}
+.profile-buttons button:hover{filter:brightness(1.08);}
+
+/* ====== NAVIGATION ====== */
+.nav-container{padding:0 0 .5rem;}
+.nav-item{display:flex;align-items:center;gap:.75rem;padding:.65rem 1.5rem;margin:.25rem .75rem;border-radius:8px;font-size:.90rem;font-weight:500;color:#94a3b8;cursor:pointer;transition:all .15s;}
+.nav-item:hover{background:#1e293b;color:#f8fafc;}
+.nav-item.selected{background:#2563eb;color:#fff;}
+.nav-icon{font-size:1.1rem;line-height:0;}
+
+/* ===== METRIC CARDS ===== */
+.metric-card{background:#fff;border:1px solid #e5e5e5;border-radius:12px;padding:1rem;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.04);}  
+.metric-label{font-size:.9rem;font-weight:600;color:#6b7280;}  
+.metric-value{font-size:1.6rem;font-weight:700;color:#1c1c1e;margin-top:.25rem;}  
+.metric-delta{font-size:.8rem;}  
+.metric-delta.up{color:#22c55e;}  
+.metric-delta.down{color:#ef4444;}  
+
+/* ===== TITRES ===== */
 h2{margin-top:2.5rem;font-weight:700;}
 
-/* Graphs */
-.stPlotlyChart,.stAltairChart,.st-vega-lite{
-background:#fff;padding:1rem;border-radius:12px;
-box-shadow:0 2px 6px rgba(0,0,0,.04);}
-    
-/* ===== TABLE MEMBRES ===== */
+/* ===== CHARTS WRAPPER ===== */
+.stPlotlyChart,.stAltairChart,.st-vega-lite{background:#fff;padding:1rem;border-radius:12px;box-shadow:0 2px 6px rgba(0,0,0,.04);}  
+
+/* ===== TABLE MEMBRES : inchangé ===== */
 .member-table{width:100%;border-collapse:collapse;font-family:Arial,sans-serif;}
 .member-table th{background:#007aff;color:#fff;padding:10px;text-align:left;}
 .member-table td{padding:8px;border-bottom:1px solid #e0e0e0;vertical-align:middle;}
 .member-table tr:hover{background:#f5f5f5;transition:background .15s;}
 .avatar{width:40px;height:40px;border-radius:50%;object-fit:cover;margin-right:8px;vertical-align:middle;}
 .badge{display:inline-block;padding:3px 6px;border-radius:4px;color:#fff;font-size:12px;margin-left:6px;}
-.badge-admin{background:#16a34a;}.badge-coach{background:#ff9f0a;}
-.badge-paid{background:#30d158;}.badge-pend{background:#eab308;}
+.badge-admin{background:#16a34a;}
+.badge-coach{background:#ff9f0a;}
+.badge-paid{background:#30d158;}
+.badge-pend{background:#eab308;}
 .card-link{text-decoration:none;font-size:18px;margin-left:8px;}
 </style>
 """,
     unsafe_allow_html=True,
 )
-# ─────────────────────────────────────────────────────────────
 
-# ╭────────── AUTH ──────────╮
+# ============================================================================
+#                           AUTHENTIFICATION
+# ============================================================================
 if "auth" not in st.session_state:
     if st.text_input("🔑 Mot de passe", type="password") != st.secrets.get("dashboard_pwd", ""):
         st.stop()
     st.session_state.auth = True
 
-# ╭────────── FIREBASE INIT ──────────╮
+# ============================================================================
+#                                FIREBASE
+# ============================================================================
 if not firebase_admin._apps:
     fb_conf = dict(st.secrets["firebase"])
     firebase_admin.initialize_app(
@@ -94,12 +128,13 @@ if not firebase_admin._apps:
 db = firestore.client()
 _bucket = storage.bucket()
 
-# ╭────────── UTILS ──────────╮
+# ============================================================================
+#                                UTILS
+# ============================================================================
 DEFAULT_AVATAR = (
     "https://firebasestorage.googleapis.com/v0/b/chops-app-9b80c.appspot.com/o/"
     "profile_picture%2Favatar-defaut-chops.jpg?alt=media"
 )
-
 
 def signed_url(path: str | None) -> str:
     if not path:
@@ -107,7 +142,6 @@ def signed_url(path: str | None) -> str:
     if path.startswith("http"):
         return path
     return _bucket.blob(path.lstrip("/")).generate_signed_url(expiration=3600)
-
 
 def iso_date(ts) -> str:
     if ts is None or pd.isna(ts):
@@ -118,11 +152,9 @@ def iso_date(ts) -> str:
         ts = ts.to_datetime()
     return ts.strftime("%d/%m/%Y") if isinstance(ts, datetime) else str(ts)
 
-
 @st.cache_data(show_spinner=True)
 def load_col(path: str) -> pd.DataFrame:
     return pd.json_normalize([d.to_dict() | {"id": d.id} for d in db.collection(path).stream()])
-
 
 def load_children(users_df: pd.DataFrame) -> pd.DataFrame:
     rows: List[Dict[str, Any]] = []
@@ -131,14 +163,12 @@ def load_children(users_df: pd.DataFrame) -> pd.DataFrame:
             rows.append(d.to_dict() | {"childId": d.id, "parentUid": uid})
     return pd.json_normalize(rows)
 
-
 def load_subrows(users_df: pd.DataFrame, sub: str) -> pd.DataFrame:
     rows: List[Dict[str, Any]] = []
     for uid in users_df["id"]:
         for d in db.collection(f"users/{uid}/{sub}").stream():
             rows.append(d.to_dict() | {"uid": uid, "docId": d.id})
     return pd.json_normalize(rows)
-
 
 @st.cache_data(show_spinner=True)
 def load_all() -> Dict[str, pd.DataFrame]:
@@ -148,13 +178,11 @@ def load_all() -> Dict[str, pd.DataFrame]:
     sessions = load_col("sessionConfigs")
     levels = load_col("levels")
 
-    trainings = pd.json_normalize(
-        [
-            d.to_dict() | {"id": d.id, "level": lvl}
-            for lvl in levels["id"]
-            for d in db.collection(f"levels/{lvl}/trainings").stream()
-        ]
-    )
+    trainings = pd.json_normalize([
+        d.to_dict() | {"id": d.id, "level": lvl}
+        for lvl in levels["id"]
+        for d in db.collection(f"levels/{lvl}/trainings").stream()
+    ])
 
     exceedances = load_subrows(users, "exceedances")
     inscriptions = load_subrows(users, "inscriptions")
@@ -172,10 +200,11 @@ def load_all() -> Dict[str, pd.DataFrame]:
         participations=participations,
     )
 
-
 data = load_all()
 
-# ╭────────── MEMBRES DF ──────────╮
+# ============================================================================
+#                       DATAFRAME MEMBRES (inchangé)
+# ============================================================================
 @lru_cache(maxsize=1)
 def build_members_df() -> pd.DataFrame:
     users, children = data["users"].copy(), data["children"].copy()
@@ -227,36 +256,99 @@ def build_members_df() -> pd.DataFrame:
 
     return members
 
-
 members_df = build_members_df()
 
-# ╭────────── SIDEBAR & MENU ──────────╮
-menu = st.sidebar.radio(
-    "Navigation",
-    ["Dashboard", "Membres", "Présences & Excédences", "Achats", "Sessions & Niveaux"],
-)
+# ============================================================================
+#                           SIDEBAR  (profil + menu)
+# ============================================================================
+PROFILE = {
+    "name": "James Gibson",
+    "handle": "@jamesweb",
+    "avatar": "https://randomuser.me/api/portraits/men/32.jpg",
+    "stats": {"Posts": 2594, "Follows": 465, "Likes": 531},
+}
 
-# ╭────────── helper metric card ──────────╮
+with st.sidebar:
+    # ─── Carte profil ───
+    profile_html = f"""
+    <div class='profile-card'>
+      <img src='{PROFILE['avatar']}' alt='avatar'/>
+      <div class='name'>{PROFILE['name']}</div>
+      <div class='handle'>{PROFILE['handle']}</div>
+      <div class='profile-stats'>
+        <div><span>{PROFILE['stats']['Posts']}</span><br/>Posts</div>
+        <div><span>{PROFILE['stats']['Follows']}</span><br/>Follows</div>
+        <div><span>{PROFILE['stats']['Likes']}</span><br/>Likes</div>
+      </div>
+      <div class='profile-buttons'>
+        <button class='follow'>Follow</button>
+        <button class='message'>Message</button>
+      </div>
+    </div>
+    """
+    st.markdown(profile_html, unsafe_allow_html=True)
+
+    # ─── Navigation ───
+    nav_items = {
+        "Dashboard": "🏠",
+        "Membres": "👥",
+        "Présences & Excédences": "📅",
+        "Achats": "💳",
+        "Sessions & Niveaux": "🗂",
+    }
+
+    # Build a simple radio menu and tag CSS for selection
+    menu = st.radio(
+        label="",  # label masqué via CSS
+        options=list(nav_items.keys()),
+        format_func=lambda x: f"{nav_items[x]}  {x}",
+        key="main_nav",
+    )
+
+    # Ajout d'un marqueur CSS sur l'option sélectionnée
+    # On récupère tous les labels et on ajoute la classe .selected via JS.
+    st.markdown(
+        """
+        <script>
+        const labels = window.parent.document.querySelectorAll('section[data-testid="stSidebar"] label');
+        labels.forEach(lb=>{lb.classList.add('nav-item');});
+        const obs = new MutationObserver(nav=>{
+            labels.forEach(lb=>lb.classList.remove('selected'));
+            const checked = window.parent.document.querySelector('input[type="radio"][checked]');
+            if(checked && checked.parentElement.tagName==='LABEL'){
+                checked.parentElement.classList.add('selected');
+            }
+        });
+        obs.observe(window.parent.document, {attributes:true, subtree:true});
+        </script>
+        """,
+        unsafe_allow_html=True,
+    )
+
+# ============================================================================
+#                         HELPERS  UI (metric_card, …)
+# ============================================================================
 def metric_card(col, label, value, delta, positive=True):
     arrow = "▲" if positive else "▼"
     cls = "up" if positive else "down"
     col.markdown(
         f"""
-<div class="metric-card">
-  <div class="metric-label">{label}</div>
-  <div class="metric-value">{value}</div>
-  <div class="metric-delta {cls}">{arrow} {delta}</div>
-</div>
-""",
+ <div class='metric-card'>
+   <div class='metric-label'>{label}</div>
+   <div class='metric-value'>{value}</div>
+   <div class='metric-delta {cls}'>{arrow} {delta}</div>
+ </div>""",
         unsafe_allow_html=True,
     )
 
+# ============================================================================
+#                               PAGES
+# ============================================================================
 
-# ╭────────────────── DASHBOARD ──────────────────╮
 if menu == "Dashboard":
     st.header("Dashboard")
 
-    # -- métriques
+    # ─── Métriques démos ───
     c1, c2, c3, c4, c5 = st.columns(5, gap="small")
     metric_card(c1, "Documents", "10.5 K", "+125", True)
     metric_card(c2, "Annotations", "510", "−2", False)
@@ -264,11 +356,9 @@ if menu == "Dashboard":
     metric_card(c4, "Training Time", "1.5 h", "+10 m", False)
     metric_card(c5, "Processing Time", "3 s", "−0.1 s", True)
 
-    # -- charts démo ------------------------------------
+    # ─── Charts démo ───
     st.subheader("Data Extraction")
-    df_line = pd.DataFrame(
-        {"x": np.arange(20), "a": np.random.randn(20).cumsum(), "b": np.random.randn(20).cumsum()}
-    )
+    df_line = pd.DataFrame({"x": np.arange(20), "a": np.random.randn(20).cumsum(), "b": np.random.randn(20).cumsum()})
     chart1 = (
         alt.Chart(df_line)
         .transform_fold(["a", "b"])
@@ -297,7 +387,6 @@ if menu == "Dashboard":
     )
     st.altair_chart(chart3, use_container_width=True)
 
-# ╭────────────────── MEMBRES ──────────────────╮
 elif menu == "Membres":
     st.header("👥 Member Management")
 
@@ -342,37 +431,34 @@ elif menu == "Membres":
         type_emoji = "👶" if r.type == "child" else "👨‍👩‍👧"
         rows.append(
             textwrap.dedent(
-                f"""\
-<tr>
-  <td>{name_html}</td>
-  <td>{type_emoji} {r.type.title()}</td>
-  <td>{r.email or '—'}</td>
-  <td>{r.phone_number or '—'}</td>
-  <td>{r.address or '—'}</td>
-  <td>{r.birth_date or '—'}</td>
-  <td>{r.session_name or '—'}</td>
-  <td style="text-align:center;">{r.days_left if pd.notna(r.days_left) else '—'}</td>
-  <td style="text-align:center;">{card_html}</td>
-</tr>
-"""
+                f"""
+                <tr>
+                  <td>{name_html}</td>
+                  <td>{type_emoji} {r.type.title()}</td>
+                  <td>{r.email or '—'}</td>
+                  <td>{r.phone_number or '—'}</td>
+                  <td>{r.address or '—'}</td>
+                  <td>{r.birth_date or '—'}</td>
+                  <td>{r.session_name or '—'}</td>
+                  <td style="text-align:center;">{r.days_left if pd.notna(r.days_left) else '—'}</td>
+                  <td style="text-align:center;">{card_html}</td>
+                </tr>
+                """
             )
         )
 
     header = textwrap.dedent(
-        """\
-<thead>
-<tr>
-  <th>👤 Name</th><th>🏷 Type</th><th>✉️ Email</th><th>📞 Phone</th>
-  <th>🏠 Address</th><th>🎂 Birth</th><th>📅 Session</th>
-  <th>⏳ Days Left</th><th>📇 Card</th>
-</tr>
-</thead>
-"""
+        """
+        <thead><tr>
+          <th>👤 Name</th><th>🏷 Type</th><th>✉️ Email</th><th>📞 Phone</th>
+          <th>🏠 Address</th><th>🎂 Birth</th><th>📅 Session</th>
+          <th>⏳ Days Left</th><th>📇 Card</th>
+        </tr></thead>
+        """
     )
 
     html = (
-        "<div style='overflow-x:auto;'>"
-        "<table class='member-table'>"
+        "<div style='overflow-x:auto;'><table class='member-table'>"
         + header
         + "<tbody>"
         + "\n".join(rows)
@@ -380,7 +466,6 @@ elif menu == "Membres":
     )
     st.markdown(html, unsafe_allow_html=True)
 
-# ╭────────────────── PRÉSENCES & EXCÉDENCES ──────────────────╮
 elif menu == "Présences & Excédences":
     st.header("📅 Présences & excédences")
 
@@ -413,8 +498,7 @@ elif menu == "Présences & Excédences":
             ins_df["date"] = pd.to_datetime(ins_df["date"], errors="coerce").apply(iso_date)
             st.subheader("Inscriptions récentes")
             st.dataframe(
-                ins_df[["uid", "training_uid", "type_utilisateur", "date"]]
-                .sort_values("date", ascending=False),
+                ins_df[["uid", "training_uid", "type_utilisateur", "date"]].sort_values("date", ascending=False),
                 use_container_width=True,
             )
 
@@ -422,12 +506,10 @@ elif menu == "Présences & Excédences":
             par_df["date"] = pd.to_datetime(par_df["date"], errors="coerce").apply(iso_date)
             st.subheader("Participations")
             st.dataframe(
-                par_df[["uid", "training_uid", "type_utilisateur", "date"]]
-                .sort_values("date", ascending=False),
+                par_df[["uid", "training_uid", "type_utilisateur", "date"]].sort_values("date", ascending=False),
                 use_container_width=True,
             )
 
-# ╭────────────────── ACHATS ──────────────────╮
 elif menu == "Achats":
     st.header("💳 Achats & paiements")
 
@@ -442,25 +524,10 @@ elif menu == "Achats":
         else:
             pur_df["date"] = pd.NaT
 
-        cols = [
-            c
-            for c in [
-                "id",
-                "userId",
-                "childId",
-                "membershipId",
-                "sessionId",
-                "paymentMethod",
-                "status",
-                "finalAmount",
-                "promoCode",
-                "date",
-            ]
-            if c in pur_df
-        ]
-        st.dataframe(
-            pur_df[cols].sort_values("date", ascending=False), use_container_width=True
-        )
+        cols = [c for c in [
+            "id","userId","childId","membershipId","sessionId","paymentMethod","status","finalAmount","promoCode","date"
+        ] if c in pur_df]
+        st.dataframe(pur_df[cols].sort_values("date", ascending=False), use_container_width=True)
 
         if "status" in pur_df:
             pcount = pur_df["status"].fillna("None").value_counts().reset_index()
@@ -472,15 +539,12 @@ elif menu == "Achats":
                 use_container_width=True,
             )
 
-# ╭────────────────── SESSIONS & NIVEAUX ──────────────────╮
-else:
+else:  # Sessions & Niveaux
     st.header("🗂 Sessions & Niveaux")
 
     st.subheader("Sessions")
     st.dataframe(
-        data["sessions"]
-        if not data["sessions"].empty
-        else pd.DataFrame(["Aucune session"]),
+        data["sessions"] if not data["sessions"].empty else pd.DataFrame(["Aucune session"]),
         use_container_width=True,
     )
 
