@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-streamlit_app.py – Dashboard CHOPS v2.5
-Ajout d’un **sidebar iOS / dark‑glass** façon mock‑up :
-  • Carte profil (avatar rond, nom, handle, compteurs)
-  • Boutons Follow / Message
-  • Menu vertical avec icônes + highlight bleu (hover & sélection)
-
-Aucun changement sur la logique métier ; seules la CSS et la construction du
-sidebar ont été revues.
+streamlit_app.py – Dashboard CHOPS v2.6
+Tweaks du **sidebar** suite à feedback :
+  • Fond bleu‑gris translucide + blur (effet « glacé »)
+  • Texte blanc par défaut
+  • Items navigation pleine largeur, padding + espacement
+  • Hover : fond bleu clair translucide ; Selected : bleu vif + barre gauche
+  • Code JS minimal conservé pour classe .selected
 """
 from __future__ import annotations
 
@@ -34,74 +33,71 @@ st.set_page_config(
 )
 
 # ============================================================================
-#                               CSS  GLOBAL
+#                               CSS GLOBAL
 # ============================================================================
-# NOTE : toutes les classes pré‑existantes sont conservées ;
-#         on ajoute simplement de nouveaux styles pour le sidebar.
 st.markdown(
     """
 <style>
-/* ===== ROOT (fond gris clair façon iOS) ===== */
-html, body, .stApp {background:#f2f2f7 !important;}
+html, body, .stApp{background:#f2f2f7 !important;}
 
-/* ===== SIDEBAR DARK GLASS ===== */
-section[data-testid="stSidebar"] > div:first-child {
-    background:#0f172a;               /* bleu‑gris très foncé */
-    color:#f8fafc;
-    border-right:none;
-    padding:0;                        /* on gère nous‑mêmes les espacements */
+/* ===== SIDEBAR – glassy dark ===== */
+section[data-testid="stSidebar"]>div:first-child{
+  background:rgba(15,23,42,.72);           /* bleu‑gris translucide */
+  backdrop-filter:blur(8px);               /* effet glacé */
+  color:#ffffff;
+  border-right:none;
+  padding:0;
 }
 
-/* On masque le titre du radio d'origine ("Navigation") */
-section[data-testid="stSidebar"] h2,                       /* éventuels headers */
-section[data-testid="stSidebar"] label[data-baseweb="radio"] > div:first-child {display:none;}
+/* Masquer l'ancien title "Navigation" */
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] label[data-baseweb="radio"]>div:first-child{display:none;}
 
-/* ====== CARTE PROFIL ====== */
-.profile-card{padding:2rem 1.5rem 1rem;text-align:center;border-bottom:1px solid rgba(255,255,255,.05);}
-.profile-card img{width:72px;height:72px;border-radius:50%;object-fit:cover;box-shadow:0 0 0 3px #38bdf8;}
-.profile-card .name{font-size:1.15rem;font-weight:600;margin-top:.75rem;}
-.profile-card .handle{font-size:.85rem;color:#94a3b8;margin-top:-.15rem;}
-.profile-stats{display:flex;justify-content:space-between;margin-top:1rem;}
-.profile-stats div{flex:1;font-size:.75rem;color:#cbd5e1;}
-.profile-stats span{display:block;font-weight:700;font-size:1rem;color:#f8fafc;}
-.profile-buttons button{width:100%;margin-top:.75rem;border:none;border-radius:6px;padding:.5rem .75rem;font-size:.8rem;font-weight:600;cursor:pointer;transition:background .15s;color:#0f172a;}
-.profile-buttons button.follow{background:#38bdf8;}
-.profile-buttons button.message{background:#e5e7eb;}
-.profile-buttons button:hover{filter:brightness(1.08);}
+/* ===== profile card ===== */
+.profile-card{padding:2rem 1.5rem 1rem;text-align:center;border-bottom:1px solid rgba(255,255,255,.06);} 
+.profile-card img{width:72px;height:72px;border-radius:50%;object-fit:cover;box-shadow:0 0 0 3px #38bdf8;} 
+.profile-card .name{font-size:1.15rem;font-weight:600;margin-top:.75rem;} 
+.profile-card .handle{font-size:.85rem;color:#cbd5e1;margin-top:-.15rem;} 
+.profile-stats{display:flex;justify-content:space-between;margin-top:1rem;} 
+.profile-stats div{flex:1;font-size:.75rem;color:#cbd5e1;} 
+.profile-stats span{display:block;font-weight:700;font-size:1rem;color:#fff;} 
+.profile-buttons button{width:100%;margin-top:.75rem;border:none;border-radius:6px;padding:.55rem .9rem;font-size:.78rem;font-weight:600;cursor:pointer;transition:filter .15s;color:#0f172a;} 
+.profile-buttons .follow{background:#38bdf8;} 
+.profile-buttons .message{background:#e5e7eb;} 
+.profile-buttons button:hover{filter:brightness(1.09);} 
 
-/* ====== NAVIGATION ====== */
-.nav-container{padding:0 0 .5rem;}
-.nav-item{display:flex;align-items:center;gap:.75rem;padding:.65rem 1.5rem;margin:.25rem .75rem;border-radius:8px;font-size:.90rem;font-weight:500;color:#94a3b8;cursor:pointer;transition:all .15s;}
-.nav-item:hover{background:#1e293b;color:#f8fafc;}
-.nav-item.selected{background:#2563eb;color:#fff;}
-.nav-icon{font-size:1.1rem;line-height:0;}
+/* ===== navigation ===== */
+.nav-container{padding:.3rem 0 1rem;} 
+.nav-item{display:flex;align-items:center;gap:.75rem;width:100%;padding:.9rem 1.75rem;margin-bottom:.15rem;font-size:.95rem;font-weight:500;color:#ffffff;cursor:pointer;transition:background .15s;} 
+.nav-item:hover{background:rgba(96,165,250,.18);} 
+.nav-item.selected{background:#2563eb;font-weight:600;position:relative;} 
+.nav-item.selected::before{content:"";position:absolute;left:0;top:0;height:100%;width:4px;background:#38bdf8;} 
+.nav-icon{font-size:1.15rem;line-height:0;} 
 
-/* ===== METRIC CARDS ===== */
-.metric-card{background:#fff;border:1px solid #e5e5e5;border-radius:12px;padding:1rem;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.04);}  
-.metric-label{font-size:.9rem;font-weight:600;color:#6b7280;}  
-.metric-value{font-size:1.6rem;font-weight:700;color:#1c1c1e;margin-top:.25rem;}  
-.metric-delta{font-size:.8rem;}  
-.metric-delta.up{color:#22c55e;}  
-.metric-delta.down{color:#ef4444;}  
+/* ===== metric cards ===== */
+.metric-card{background:#ffffff;border:1px solid #e5e5e5;border-radius:12px;padding:1rem;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.04);} 
+.metric-label{font-size:.9rem;font-weight:600;color:#6b7280;} 
+.metric-value{font-size:1.6rem;font-weight:700;color:#1c1c1e;margin-top:.25rem;} 
+.metric-delta{font-size:.8rem;} 
+.metric-delta.up{color:#22c55e;} 
+.metric-delta.down{color:#ef4444;} 
 
-/* ===== TITRES ===== */
-h2{margin-top:2.5rem;font-weight:700;}
+h2{margin-top:2.5rem;font-weight:700;} 
 
-/* ===== CHARTS WRAPPER ===== */
-.stPlotlyChart,.stAltairChart,.st-vega-lite{background:#fff;padding:1rem;border-radius:12px;box-shadow:0 2px 6px rgba(0,0,0,.04);}  
+.stPlotlyChart,.stAltairChart,.st-vega-lite{background:#fff;padding:1rem;border-radius:12px;box-shadow:0 2px 6px rgba(0,0,0,.04);} 
 
-/* ===== TABLE MEMBRES : inchangé ===== */
-.member-table{width:100%;border-collapse:collapse;font-family:Arial,sans-serif;}
-.member-table th{background:#007aff;color:#fff;padding:10px;text-align:left;}
-.member-table td{padding:8px;border-bottom:1px solid #e0e0e0;vertical-align:middle;}
-.member-table tr:hover{background:#f5f5f5;transition:background .15s;}
-.avatar{width:40px;height:40px;border-radius:50%;object-fit:cover;margin-right:8px;vertical-align:middle;}
-.badge{display:inline-block;padding:3px 6px;border-radius:4px;color:#fff;font-size:12px;margin-left:6px;}
-.badge-admin{background:#16a34a;}
-.badge-coach{background:#ff9f0a;}
-.badge-paid{background:#30d158;}
-.badge-pend{background:#eab308;}
-.card-link{text-decoration:none;font-size:18px;margin-left:8px;}
+/* ===== member table ===== */
+.member-table{width:100%;border-collapse:collapse;font-family:Arial,sans-serif;} 
+.member-table th{background:#007aff;color:#fff;padding:10px;text-align:left;} 
+.member-table td{padding:8px;border-bottom:1px solid #e0e0e0;vertical-align:middle;} 
+.member-table tr:hover{background:#f5f5f5;transition:background .15s;} 
+.avatar{width:40px;height:40px;border-radius:50%;object-fit:cover;margin-right:8px;vertical-align:middle;} 
+.badge{display:inline-block;padding:3px 6px;border-radius:4px;color:#fff;font-size:12px;margin-left:6px;} 
+.badge-admin{background:#16a34a;} 
+.badge-coach{background:#ff9f0a;} 
+.badge-paid{background:#30d158;} 
+.badge-pend{background:#eab308;} 
+.card-link{text-decoration:none;font-size:18px;margin-left:8px;} 
 </style>
 """,
     unsafe_allow_html=True,
@@ -120,10 +116,7 @@ if "auth" not in st.session_state:
 # ============================================================================
 if not firebase_admin._apps:
     fb_conf = dict(st.secrets["firebase"])
-    firebase_admin.initialize_app(
-        credentials.Certificate(fb_conf),
-        {"storageBucket": f"{fb_conf['project_id']}.appspot.com"},
-    )
+    firebase_admin.initialize_app(credentials.Certificate(fb_conf), {"storageBucket": f"{fb_conf['project_id']}.appspot.com"})
 
 db = firestore.client()
 _bucket = storage.bucket()
@@ -131,12 +124,9 @@ _bucket = storage.bucket()
 # ============================================================================
 #                                UTILS
 # ============================================================================
-DEFAULT_AVATAR = (
-    "https://firebasestorage.googleapis.com/v0/b/chops-app-9b80c.appspot.com/o/"
-    "profile_picture%2Favatar-defaut-chops.jpg?alt=media"
-)
+DEFAULT_AVATAR = "https://firebasestorage.googleapis.com/v0/b/chops-app-9b80c.appspot.com/o/profile_picture%2Favatar-defaut-chops.jpg?alt=media"
 
-def signed_url(path: str | None) -> str:
+def signed_url(path: str|None) -> str:
     if not path:
         return DEFAULT_AVATAR
     if path.startswith("http"):
@@ -146,59 +136,42 @@ def signed_url(path: str | None) -> str:
 def iso_date(ts) -> str:
     if ts is None or pd.isna(ts):
         return ""
-    if isinstance(ts, (int, float)):
+    if isinstance(ts, (int,float)):
         ts = datetime.fromtimestamp(ts, tz=timezone.utc)
     elif hasattr(ts, "to_datetime"):
         ts = ts.to_datetime()
     return ts.strftime("%d/%m/%Y") if isinstance(ts, datetime) else str(ts)
 
 @st.cache_data(show_spinner=True)
-def load_col(path: str) -> pd.DataFrame:
-    return pd.json_normalize([d.to_dict() | {"id": d.id} for d in db.collection(path).stream()])
+def load_col(path:str) -> pd.DataFrame:
+    return pd.json_normalize([d.to_dict() | {"id":d.id} for d in db.collection(path).stream()])
 
-def load_children(users_df: pd.DataFrame) -> pd.DataFrame:
-    rows: List[Dict[str, Any]] = []
+def load_children(users_df:pd.DataFrame) -> pd.DataFrame:
+    rows:List[Dict[str,Any]]=[]
     for uid in users_df["id"]:
         for d in db.collection(f"users/{uid}/children").stream():
-            rows.append(d.to_dict() | {"childId": d.id, "parentUid": uid})
+            rows.append(d.to_dict() | {"childId":d.id,"parentUid":uid})
     return pd.json_normalize(rows)
 
-def load_subrows(users_df: pd.DataFrame, sub: str) -> pd.DataFrame:
-    rows: List[Dict[str, Any]] = []
+def load_subrows(users_df:pd.DataFrame, sub:str) -> pd.DataFrame:
+    rows:List[Dict[str,Any]]=[]
     for uid in users_df["id"]:
         for d in db.collection(f"users/{uid}/{sub}").stream():
-            rows.append(d.to_dict() | {"uid": uid, "docId": d.id})
+            rows.append(d.to_dict() | {"uid":uid,"docId":d.id})
     return pd.json_normalize(rows)
 
 @st.cache_data(show_spinner=True)
-def load_all() -> Dict[str, pd.DataFrame]:
+def load_all() -> Dict[str,pd.DataFrame]:
     users = load_col("users")
     children = load_children(users)
     purchases = load_col("purchases")
     sessions = load_col("sessionConfigs")
     levels = load_col("levels")
-
-    trainings = pd.json_normalize([
-        d.to_dict() | {"id": d.id, "level": lvl}
-        for lvl in levels["id"]
-        for d in db.collection(f"levels/{lvl}/trainings").stream()
-    ])
-
-    exceedances = load_subrows(users, "exceedances")
-    inscriptions = load_subrows(users, "inscriptions")
-    participations = load_subrows(users, "participations")
-
-    return dict(
-        users=users,
-        children=children,
-        purchases=purchases,
-        sessions=sessions,
-        levels=levels,
-        trainings=trainings,
-        exceedances=exceedances,
-        inscriptions=inscriptions,
-        participations=participations,
-    )
+    trainings = pd.json_normalize([d.to_dict() | {"id":d.id,"level":lvl} for lvl in levels["id"] for d in db.collection(f"levels/{lvl}/trainings").stream()])
+    exceedances = load_subrows(users,"exceedances")
+    inscriptions = load_subrows(users,"inscriptions")
+    participations = load_subrows(users,"participations")
+    return dict(users=users,children=children,purchases=purchases,sessions=sessions,levels=levels,trainings=trainings,exceedances=exceedances,inscriptions=inscriptions,participations=participations)
 
 data = load_all()
 
