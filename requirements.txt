@@ -1,15 +1,20 @@
 # ── cœur de l’app ───────────────────────────────────────────────
-streamlit==1.44.1          # UI
-firebase-admin==6.5.0      # accès Firestore / Storage
-pandas>=2.2,<3.0           # dataframes
-numpy>=1.26                # utilisé pour les données aléatoires dans les graphiques
-altair>=5.2                # visualisations
-pytz>=2024.1               # gestion des fuseaux
+streamlit==1.44.1
+firebase-admin==6.5.0
+pandas>=2.2,<3.0
+numpy>=1.26
+altair>=5.2
+pytz>=2024.1
 
-# ── auth Google (souvent installé en sous-dépendance, mais on épingle) ──
+# ── auth Google ────────────────────────────────────────────────
 google-auth>=2.28
 google-auth-httplib2>=0.2.0
-google-api-python-client>=2.126   # si tu fais encore des appels REST directs
+google-api-python-client>=2.126
 
-# ── composants Streamlit additionnels ───────────────────────────
-streamlit-aggrid==0.3.4    # si tu l’utilises ailleurs pour des tables interactives
+# ── visualisation & UI avancée ─────────────────────────────────
+streamlit-echarts>=0.4.0      # donuts / gauges / graphes interactifs
+plotly>=5.19                  # (optionnel) line & bar charts animés
+streamlit-extras>=0.3.0       # (optionnel) icônes Material, badges, etc.
+
+# ── table interactive si tu en as besoin ───────────────────────
+streamlit-aggrid==0.3.4

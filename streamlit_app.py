@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-streamlit_app.py – Dashboard CHOPS v2.4
-Look iOS-like (clair, cards, coins arrondis).
+streamlit_app.py – Dashboard CHOPS v3.0
+Dark • glass • neon blue style (inspiré du mockup).
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 import pytz
 import streamlit as st
+from streamlit_echarts import st_echarts
 import textwrap
 
 import firebase_admin
@@ -22,84 +23,107 @@ from firebase_admin import credentials, firestore, storage
 # ─────────────────────────────────────────────────────────────
 # PAGE CONFIG
 st.set_page_config(
-    page_title="Dashboard CHOPS",
+    page_title="CHOPS Dashboard",
     page_icon="🏓",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 # ─────────────────────────────────────────────────────────────
-# STYLE GLOBAL + table Membres
+# THEME & STYLE GLOBAL (dark glass)
 st.markdown(
     """
 <style>
-/* ========== GLOBAL iOS-LIKE ========== */
-html, body, .stApp { background:#f2f2f7 !important; }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
 
-/* Sidebar */
-section[data-testid="stSidebar"] > div:first-child {
-    background:#fff; border-right:1px solid #e6e6e6;
+/* --------------- Fond dégradé nuit --------------- */
+html, body, .stApp{
+    background:#0e1624 !important;
+    font-family:'Inter',sans-serif;
 }
-section[data-testid="stSidebar"] .st-emotion-cache-1wv5z7h,
-section[data-testid="stSidebar"] .st-emotion-cache-75m8jr {
-    color:#007aff !important;
+body:before{
+    content:'';position:fixed;inset:0;
+    background:radial-gradient(circle at 25% 15%,#1f2d46 0%,transparent 60%);
+    z-index:-1;
 }
 
-/* Cards métriques */
-.metric-card{background:#fff;border:1px solid #e5e5e5;border-radius:12px;
-padding:1rem;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.04);}
-.metric-label{font-size:.9rem;font-weight:600;color:#6b7280;}
-.metric-value{font-size:1.6rem;font-weight:700;color:#1c1c1e;margin-top:.25rem;}
-.metric-delta{font-size:.8rem;}
+/* --------------- Sidebar --------------- */
+section[data-testid="stSidebar"]>div:first-child{
+    background:#131e2e;border-right:1px solid #243452;
+}
+.sidebar-avatar{
+    border:4px solid #1e90ff;border-radius:50%;width:96px;height:96px;
+    object-fit:cover;margin-bottom:0.4rem;
+}
+.menu-item{
+    padding:.55rem 1rem;border-radius:6px;color:#e8f0fb;font-weight:600;
+}
+.menu-item:hover, .menu-active{
+    background:#1e90ff30;color:#1e90ff;
+}
+
+/* --------------- Metric cards --------------- */
+.metric-card{
+    background:#19273c;border-radius:12px;padding:1rem;text-align:center;
+    box-shadow:0 4px 14px rgba(0,0,0,.55);
+}
+.metric-label{font-size:.8rem;color:#8aa1c2;font-weight:600;letter-spacing:.02em;text-transform:uppercase;}
+.metric-value{font-size:2rem;font-weight:700;color:#e8f0fb;margin:.25rem 0;}
+.metric-delta{font-size:.75rem;}
 .metric-delta.up{color:#22c55e;} .metric-delta.down{color:#ef4444;}
 
-/* Titres h2 */
-h2{margin-top:2.5rem;font-weight:700;}
+/* --------------- Charts containers --------------- */
+.chart-card{
+    background:#19273c;padding:1rem;border-radius:12px;
+    box-shadow:0 4px 14px rgba(0,0,0,.55);
+}
+h2{color:#e8f0fb;font-weight:700;margin-top:2.2rem;margin-bottom:0.6rem;}
 
-/* Graphs */
-.stPlotlyChart,.stAltairChart,.st-vega-lite{
-background:#fff;padding:1rem;border-radius:12px;
-box-shadow:0 2px 6px rgba(0,0,0,.04);}
-    
-/* ===== TABLE MEMBRES ===== */
-.member-table{width:100%;border-collapse:collapse;font-family:Arial,sans-serif;}
-.member-table th{background:#007aff;color:#fff;padding:10px;text-align:left;}
-.member-table td{padding:8px;border-bottom:1px solid #e0e0e0;vertical-align:middle;}
-.member-table tr:hover{background:#f5f5f5;transition:background .15s;}
-.avatar{width:40px;height:40px;border-radius:50%;object-fit:cover;margin-right:8px;vertical-align:middle;}
-.badge{display:inline-block;padding:3px 6px;border-radius:4px;color:#fff;font-size:12px;margin-left:6px;}
-.badge-admin{background:#16a34a;}.badge-coach{background:#ff9f0a;}
-.badge-paid{background:#30d158;}.badge-pend{background:#eab308;}
-.card-link{text-decoration:none;font-size:18px;margin-left:8px;}
+/* --------------- Table Membres --------------- */
+.member-table{
+    width:100%;border-collapse:collapse;font-family:Inter,Arial,sans-serif;
+}
+.member-table th{
+    background:#1e90ff;color:#fff;padding:10px;text-align:left;border:none;
+}
+.member-table td{
+    padding:8px;border-bottom:1px solid #243452;vertical-align:middle;color:#e8f0fb;
+}
+.member-table tr:hover{background:#243452;}
+.avatar{width:38px;height:38px;border-radius:50%;object-fit:cover;margin-right:8px;vertical-align:middle;}
+.badge{display:inline-block;padding:3px 6px;border-radius:4px;color:#fff;font-size:.7rem;margin-left:6px;}
+.badge-admin{background:#16a34a;} .badge-coach{background:#ff9f0a;}
+.badge-paid{background:#30d158;} .badge-pend{background:#eab308;}
+.card-link{text-decoration:none;font-size:18px;margin-left:8px;color:#1e90ff;}
+
 </style>
-""",
+    """,
     unsafe_allow_html=True,
 )
-# ─────────────────────────────────────────────────────────────
 
-# ╭────────── AUTH ──────────╮
+# ─────────────────────────────────────────────────────────────
+# AUTH
 if "auth" not in st.session_state:
-    if st.text_input("🔑 Mot de passe", type="password") != st.secrets.get("dashboard_pwd", ""):
+    if st.text_input("🔑 Password", type="password") != st.secrets.get("dashboard_pwd", ""):
         st.stop()
     st.session_state.auth = True
 
-# ╭────────── FIREBASE INIT ──────────╮
+# FIREBASE INIT
 if not firebase_admin._apps:
     fb_conf = dict(st.secrets["firebase"])
     firebase_admin.initialize_app(
         credentials.Certificate(fb_conf),
         {"storageBucket": f"{fb_conf['project_id']}.appspot.com"},
     )
-
 db = firestore.client()
 _bucket = storage.bucket()
 
-# ╭────────── UTILS ──────────╮
+# ─────────────────────────────────────────────────────────────
+# UTILS
 DEFAULT_AVATAR = (
     "https://firebasestorage.googleapis.com/v0/b/chops-app-9b80c.appspot.com/o/"
     "profile_picture%2Favatar-defaut-chops.jpg?alt=media"
 )
-
 
 def signed_url(path: str | None) -> str:
     if not path:
@@ -107,7 +131,6 @@ def signed_url(path: str | None) -> str:
     if path.startswith("http"):
         return path
     return _bucket.blob(path.lstrip("/")).generate_signed_url(expiration=3600)
-
 
 def iso_date(ts) -> str:
     if ts is None or pd.isna(ts):
@@ -118,11 +141,10 @@ def iso_date(ts) -> str:
         ts = ts.to_datetime()
     return ts.strftime("%d/%m/%Y") if isinstance(ts, datetime) else str(ts)
 
-
+# ---------------- Firestore loaders -----------------
 @st.cache_data(show_spinner=True)
 def load_col(path: str) -> pd.DataFrame:
     return pd.json_normalize([d.to_dict() | {"id": d.id} for d in db.collection(path).stream()])
-
 
 def load_children(users_df: pd.DataFrame) -> pd.DataFrame:
     rows: List[Dict[str, Any]] = []
@@ -131,7 +153,6 @@ def load_children(users_df: pd.DataFrame) -> pd.DataFrame:
             rows.append(d.to_dict() | {"childId": d.id, "parentUid": uid})
     return pd.json_normalize(rows)
 
-
 def load_subrows(users_df: pd.DataFrame, sub: str) -> pd.DataFrame:
     rows: List[Dict[str, Any]] = []
     for uid in users_df["id"]:
@@ -139,14 +160,13 @@ def load_subrows(users_df: pd.DataFrame, sub: str) -> pd.DataFrame:
             rows.append(d.to_dict() | {"uid": uid, "docId": d.id})
     return pd.json_normalize(rows)
 
-
 @st.cache_data(show_spinner=True)
 def load_all() -> Dict[str, pd.DataFrame]:
-    users = load_col("users")
-    children = load_children(users)
-    purchases = load_col("purchases")
-    sessions = load_col("sessionConfigs")
-    levels = load_col("levels")
+    users        = load_col("users")
+    children     = load_children(users)
+    purchases    = load_col("purchases")
+    sessions     = load_col("sessionConfigs")
+    levels       = load_col("levels")
 
     trainings = pd.json_normalize(
         [
@@ -156,8 +176,8 @@ def load_all() -> Dict[str, pd.DataFrame]:
         ]
     )
 
-    exceedances = load_subrows(users, "exceedances")
-    inscriptions = load_subrows(users, "inscriptions")
+    exceedances    = load_subrows(users, "exceedances")
+    inscriptions   = load_subrows(users, "inscriptions")
     participations = load_subrows(users, "participations")
 
     return dict(
@@ -172,15 +192,14 @@ def load_all() -> Dict[str, pd.DataFrame]:
         participations=participations,
     )
 
-
 data = load_all()
 
-# ╭────────── MEMBRES DF ──────────╮
+# ╭────────── MEMBERS DF ──────────╮
 @lru_cache(maxsize=1)
 def build_members_df() -> pd.DataFrame:
     users, children = data["users"].copy(), data["children"].copy()
     purchases = data["purchases"].copy()
-    sessions = data["sessions"].set_index("id")
+    sessions  = data["sessions"].set_index("id")
 
     users["type"], users["parentUid"] = "parent", users["id"]
 
@@ -227,75 +246,88 @@ def build_members_df() -> pd.DataFrame:
 
     return members
 
-
 members_df = build_members_df()
 
-# ╭────────── SIDEBAR & MENU ──────────╮
-menu = st.sidebar.radio(
-    "Navigation",
-    ["Dashboard", "Membres", "Présences & Excédences", "Achats", "Sessions & Niveaux"],
-)
+# ╭────────── SIDEBAR  (avatar + menu) ──────────╮
+with st.sidebar:
+    st.image("https://i.pravatar.cc/200", width=96, output_format="auto", caption=None, clamp=True, channels="RGB",)
+    st.markdown("<h3 style='margin-top:0;color:#e8f0fb;'>James Cibson</h3>", unsafe_allow_html=True)
+    n1,n2,n3 = st.columns(3, gap="small")
+    n1.metric("Posts","2 594")
+    n2.metric("Likes","465")
+    n3.metric("Shares","551")
+    st.button("Follow", key="f", type="primary")
+    st.button("Message", key="m")
+    st.markdown("---")
 
-# ╭────────── helper metric card ──────────╮
+    menu = st.radio(
+        " ",  # hidden label
+        ["Dashboard","Membres","Présences & Excédences","Achats","Sessions & Niveaux"],
+        index=0,
+        label_visibility="collapsed",
+        format_func=lambda x: x  # simple texte, tu peux ajouter des icônes
+    )
+
+# ╭────────── helper metric & donut ──────────╮
 def metric_card(col, label, value, delta, positive=True):
     arrow = "▲" if positive else "▼"
     cls = "up" if positive else "down"
     col.markdown(
         f"""
-<div class="metric-card">
-  <div class="metric-label">{label}</div>
-  <div class="metric-value">{value}</div>
-  <div class="metric-delta {cls}">{arrow} {delta}</div>
-</div>
-""",
+        <div class="metric-card">
+            <div class="metric-label">{label}</div>
+            <div class="metric-value">{value}</div>
+            <div class="metric-delta {cls}">{arrow} {delta}</div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
+def donut(kpi, val, color):
+    option = {
+        "series":[{
+            "type":"pie","radius":["70%","90%"],"data":[
+                {"value":val,"name":kpi,"itemStyle":{"color":color}},
+                {"value":100-val,"name":"","itemStyle":{"color":"#243452"}}
+            ],
+            "label":{"show":False}
+        }]
+    }
+    st_echarts(option, height="120px", key=kpi)
 
 # ╭────────────────── DASHBOARD ──────────────────╮
 if menu == "Dashboard":
     st.header("Dashboard")
 
-    # -- métriques
-    c1, c2, c3, c4, c5 = st.columns(5, gap="small")
-    metric_card(c1, "Documents", "10.5 K", "+125", True)
-    metric_card(c2, "Annotations", "510", "−2", False)
-    metric_card(c3, "Accuracy", "87.9 %", "+0.1 %", True)
-    metric_card(c4, "Training Time", "1.5 h", "+10 m", False)
-    metric_card(c5, "Processing Time", "3 s", "−0.1 s", True)
+    # ——— KPIs donuts ———
+    d1,d2,d3 = st.columns(3, gap="small")
+    with d1: donut("Visit & Stay",25,"#1e90ff")
+    with d2: donut("Visit from Social",50,"#0fa3b1")
+    with d3: donut("Shares",75,"#f44336")
 
-    # -- charts démo ------------------------------------
-    st.subheader("Data Extraction")
+    # ——— Metrics cards ———
+    c1,c2,c3,c4,c5 = st.columns(5, gap="small")
+    metric_card(c1,"Documents","10.5 K","+125",True)
+    metric_card(c2,"Annotations","510","–2",False)
+    metric_card(c3,"Accuracy","87.9 %","+0.1 %",True)
+    metric_card(c4,"Training Time","1.5 h","+10 m",False)
+    metric_card(c5,"Processing Time","3 s","–0.1 s",True)
+
+    # ——— Line chart (hourly views) ———
+    st.subheader("Hourly Views")
     df_line = pd.DataFrame(
-        {"x": np.arange(20), "a": np.random.randn(20).cumsum(), "b": np.random.randn(20).cumsum()}
+        {"hour":np.arange(24),
+         "Channel A":(np.sin(np.arange(24)/3)+1)*350 + np.random.randint(-40,40,24),
+         "Channel B":(np.cos(np.arange(24)/4)+1)*250 + np.random.randint(-30,30,24)}
     )
-    chart1 = (
-        alt.Chart(df_line)
-        .transform_fold(["a", "b"])
-        .mark_line()
-        .encode(x="x:Q", y="value:Q", color="key:N")
+    line = (
+        alt.Chart(df_line.melt("hour")).mark_line(strokeWidth=2).encode(
+            x="hour:O", y="value:Q", color="variable:N"
+        ).configure_axis(
+            gridColor="#243452", gridWidth=1, labelColor="#8aa1c2", title=None
+        ).configure_view(strokeWidth=0)
     )
-    st.altair_chart(chart1, use_container_width=True)
-
-    st.subheader("Model Training")
-    df_bar = pd.DataFrame(np.random.randn(20, 2), columns=["pos", "neg"])
-    chart2 = (
-        alt.Chart(df_bar.reset_index())
-        .transform_fold(["pos", "neg"])
-        .mark_bar()
-        .encode(x="index:O", y="value:Q", color="key:N")
-    )
-    st.altair_chart(chart2, use_container_width=True)
-
-    st.subheader("Data Annotation")
-    df_area = pd.DataFrame(np.random.randn(20, 2), columns=["x", "y"])
-    chart3 = (
-        alt.Chart(df_area.reset_index())
-        .transform_fold(["x", "y"])
-        .mark_area(opacity=0.5)
-        .encode(x="index:Q", y="value:Q", color="key:N")
-    )
-    st.altair_chart(chart3, use_container_width=True)
+    st.altair_chart(line, use_container_width=True)
 
 # ╭────────────────── MEMBRES ──────────────────╮
 elif menu == "Membres":
@@ -305,9 +337,9 @@ elif menu == "Membres":
         st.subheader("Filters")
         f_type = st.multiselect(
             "Type",
-            ["parent", "child"],
-            default=["parent", "child"],
-            format_func=lambda x: {"parent": "👨‍👩‍👧 Parent", "child": "👶 Child"}[x],
+            ["parent","child"],
+            default=["parent","child"],
+            format_func=lambda x: {"parent":"👨‍👩‍👧 Parent","child":"👶 Child"}[x],
         )
         query = st.text_input("Search name/email…")
 
@@ -318,67 +350,42 @@ elif menu == "Membres":
             | df["email"].str.contains(query, case=False, na=False)
         ]
 
-    rows: List[str] = []
-    for _, r in df.iterrows():
-        badges = ""
-        if r.get("isAdmin"):
-            badges += '<span class="badge badge-admin">ADMIN</span>'
-        if r.get("isCoach"):
-            badges += '<span class="badge badge-coach">COACH</span>'
-        if r.status == "paid":
-            badges += '<span class="badge badge-paid">✅ Paid</span>'
-        elif r.status == "pending":
-            badges += '<span class="badge badge-pend">⏱ Pending</span>'
+    # build HTML table
+    rows=[]
+    for _,r in df.iterrows():
+        badges=""
+        if r.get("isAdmin"):badges+='<span class="badge badge-admin">ADMIN</span>'
+        if r.get("isCoach"):badges+='<span class="badge badge-coach">COACH</span>'
+        if r.status=="paid":badges+='<span class="badge badge-paid">✅ Paid</span>'
+        elif r.status=="pending":badges+='<span class="badge badge-pend">⏱ Pending</span>'
 
-        avatar_html = f'<img src="{r.avatar}" class="avatar"/>'
-        name_html = f"{avatar_html}{r.full_name}{badges}"
-
-        card_html = (
-            f'<a href="{r.studentCardUrl}" target="_blank" class="card-link">📇</a>'
-            if getattr(r, "studentCardUrl", None)
-            else ""
-        )
-
-        type_emoji = "👶" if r.type == "child" else "👨‍👩‍👧"
-        rows.append(
-            textwrap.dedent(
-                f"""\
+        name_html=f'<img src="{r.avatar}" class="avatar"/>{r.full_name}{badges}'
+        card_html=f'<a href="{r.studentCardUrl}" target="_blank" class="card-link">📇</a>' if getattr(r,"studentCardUrl",None)else""
+        type_emoji="👶" if r.type=="child" else "👨‍👩‍👧"
+        rows.append(textwrap.dedent(f"""
 <tr>
-  <td>{name_html}</td>
-  <td>{type_emoji} {r.type.title()}</td>
-  <td>{r.email or '—'}</td>
-  <td>{r.phone_number or '—'}</td>
-  <td>{r.address or '—'}</td>
-  <td>{r.birth_date or '—'}</td>
-  <td>{r.session_name or '—'}</td>
-  <td style="text-align:center;">{r.days_left if pd.notna(r.days_left) else '—'}</td>
-  <td style="text-align:center;">{card_html}</td>
-</tr>
-"""
-            )
-        )
+<td>{name_html}</td>
+<td>{type_emoji} {r.type.title()}</td>
+<td>{r.email or '—'}</td>
+<td>{r.phone_number or '—'}</td>
+<td>{r.address or '—'}</td>
+<td>{r.birth_date or '—'}</td>
+<td>{r.session_name or '—'}</td>
+<td style="text-align:center;">{r.days_left if pd.notna(r.days_left) else '—'}</td>
+<td style="text-align:center;">{card_html}</td>
+</tr>"""))
 
-    header = textwrap.dedent(
-        """\
-<thead>
-<tr>
-  <th>👤 Name</th><th>🏷 Type</th><th>✉️ Email</th><th>📞 Phone</th>
-  <th>🏠 Address</th><th>🎂 Birth</th><th>📅 Session</th>
-  <th>⏳ Days Left</th><th>📇 Card</th>
-</tr>
-</thead>
-"""
-    )
+    header=textwrap.dedent("""\
+<thead><tr>
+<th>👤 Name</th><th>🏷 Type</th><th>✉️ Email</th><th>📞 Phone</th>
+<th>🏠 Address</th><th>🎂 Birth</th><th>📅 Session</th>
+<th>⏳ Days</th><th>📇 Card</th></tr></thead>""")
 
-    html = (
-        "<div style='overflow-x:auto;'>"
-        "<table class='member-table'>"
-        + header
-        + "<tbody>"
-        + "\n".join(rows)
-        + "</tbody></table></div>"
+    st.markdown(
+        "<div style='overflow-x:auto;'><table class='member-table'>"+header+"<tbody>"+
+        "\n".join(rows)+"</tbody></table></div>",
+        unsafe_allow_html=True,
     )
-    st.markdown(html, unsafe_allow_html=True)
 
 # ╭────────────────── PRÉSENCES & EXCÉDENCES ──────────────────╮
 elif menu == "Présences & Excédences":
