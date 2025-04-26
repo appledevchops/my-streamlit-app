@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-streamlit_app.py – Dashboard CHOPS v2.8
-🔄 **Navigation 100 % HTML (sans radio ni JS)**
-  • Les items du menu sont de simples liens `<a>` plein‑largeur stylés en cards.
-  • Le clic recharge l’app avec un query‑param `?nav=…` ; on le lit pour savoir
-    quelle page afficher.
-Aucune logique métier n’est modifiée.
+streamlit_app.py – Dashboard CHOPS v2.8 (navigation HTML pur)
+
+• Sidebar : carte profil + menu en « cards » translucides.
+• Pas de JS ; on utilise un query‑param `?nav=...` pour connaître la page.
+• Aucune logique métier n’est modifiée.
 """
 from __future__ import annotations
 
@@ -24,21 +23,27 @@ import textwrap
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
 
-# ──────────────────────────── PAGE CONFIG
-st.set_page_config(page_title="Dashboard CHOPS", page_icon="🏓", layout="wide", initial_sidebar_state="expanded")
+# ─────────────────────────── PAGE CONFIG
+st.set_page_config(
+    page_title="Dashboard CHOPS",
+    page_icon="🏓",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-# ╔════════════════════════════════════════════╗
-#                   GLOBAL CSS
-# ╚════════════════════════════════════════════╝
+# ══════════════════════════  GLOBAL CSS  ══════════════════════════
 st.markdown(
     """
 <style>
 html, body, .stApp{background:#f2f2f7 !important;}
 
-/* ===== SIDEBAR ===== */
-section[data-testid="stSidebar"]>div:first-child{background:rgba(15,23,42,.72);backdrop-filter:blur(8px);color:#fff;border-right:none;padding:0;}
+section[data-testid="stSidebar"]>div:first-child{
+  background:rgba(15,23,42,.72);
+  backdrop-filter:blur(8px);
+  color:#fff;border-right:none;padding:0;
+}
 
-/* ===== PROFILE CARD ===== */
+/* ——— PROFILE CARD ——— */
 .profile-card{padding:2rem 1.5rem 1rem;text-align:center;border-bottom:1px solid rgba(255,255,255,.06);} 
 .profile-card img{width:72px;height:72px;border-radius:50%;object-fit:cover;box-shadow:0 0 0 3px #38bdf8;} 
 .profile-card .name{font-size:1.15rem;font-weight:600;margin-top:.75rem;} 
@@ -47,18 +52,17 @@ section[data-testid="stSidebar"]>div:first-child{background:rgba(15,23,42,.72);b
 .profile-stats div{flex:1;font-size:.75rem;color:#cbd5e1;} 
 .profile-stats span{display:block;font-weight:700;font-size:1rem;color:#fff;} 
 .profile-buttons button{width:100%;margin-top:.75rem;border:none;border-radius:6px;padding:.55rem .9rem;font-size:.78rem;font-weight:600;cursor:pointer;transition:filter .15s;color:#0f172a;} 
-.profile-buttons .follow{background:#38bdf8;} 
-.profile-buttons .message{background:#e5e7eb;} 
+.profile-buttons .follow{background:#38bdf8;} .profile-buttons .message{background:#e5e7eb;} 
 .profile-buttons button:hover{filter:brightness(1.09);} 
 
-/* ===== NAVIGATION CARDS ===== */
+/* ——— NAVIGATION CARDS ——— */
 .nav-container{padding:1.2rem 0 1.6rem;display:flex;flex-direction:column;gap:.6rem;}
 .nav-item{display:flex;align-items:center;gap:.85rem;width:calc(100% - 2rem);margin:0 1rem;padding:1rem 1.2rem;font-size:.95rem;font-weight:500;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:14px;color:#ffffff;text-decoration:none;transition:all .18s ease;box-shadow:0 1px 2px rgba(0,0,0,.22);} 
 .nav-item:hover{background:rgba(96,165,250,.22);transform:scale(1.03);} 
 .nav-item.selected{background:#2563eb;border-color:#2563eb;box-shadow:0 2px 4px rgba(0,0,0,.25);} 
 .nav-icon{font-size:1.25rem;line-height:0;} 
 
-/* ===== METRIC CARDS / TABLES ===== */
+/* ——— METRIC CARDS / TABLES ——— */
 .metric-card{background:#ffffff;border:1px solid #e5e5e5;border-radius:12px;padding:1rem;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.04);} 
 .metric-label{font-size:.9rem;font-weight:600;color:#6b7280;} 
 .metric-value{font-size:1.6rem;font-weight:700;color:#1c1c1e;margin-top:.25rem;} 
@@ -72,25 +76,20 @@ h2{margin-top:2.5rem;font-weight:700;}
 .member-table tr:hover{background:#f5f5f5;transition:background .15s;}
 .avatar{width:40px;height:40px;border-radius:50%;object-fit:cover;margin-right:8px;vertical-align:middle;}
 .badge{display:inline-block;padding:3px 6px;border-radius:4px;color:#fff;font-size:12px;margin-left:6px;}
-.badge-admin{background:#16a34a;}.badge-coach{background:#ff9f0a;}
-.badge-paid{background:#30d158;}.badge-pend{background:#eab308;}
+.badge-admin{background:#16a34a;} .badge-coach{background:#ff9f0a;} .badge-paid{background:#30d158;} .badge-pend{background:#eab308;} 
 .card-link{text-decoration:none;font-size:18px;margin-left:8px;}
 </style>
 """,
     unsafe_allow_html=True,
 )
 
-# ╔════════════════════════════════════════════╗
-#                 AUTHENTIFICATION
-# ╚════════════════════════════════════════════╝
+# ─────────────────────────  AUTH  ─────────────────────────
 if "auth" not in st.session_state:
     if st.text_input("🔑 Mot de passe", type="password") != st.secrets.get("dashboard_pwd", ""):
         st.stop()
     st.session_state.auth = True
 
-# ╔════════════════════════════════════════════╗
-#                     FIREBASE
-# ╚════════════════════════════════════════════╝
+# ────────────────────────  FIREBASE  ───────────────────────
 if not firebase_admin._apps:
     fb_conf = dict(st.secrets["firebase"])
     firebase_admin.initialize_app(credentials.Certificate(fb_conf), {"storageBucket": f"{fb_conf['project_id']}.appspot.com"})
@@ -98,9 +97,7 @@ if not firebase_admin._apps:
 db = firestore.client()
 _bucket = storage.bucket()
 
-# ╔════════════════════════════════════════════╗
-#                      UTILS
-# ╚════════════════════════════════════════════╝
+# ───────────────────────────  UTILS  ───────────────────────────
 DEFAULT_AVATAR = "https://firebasestorage.googleapis.com/v0/b/chops-app-9b80c.appspot.com/o/profile_picture%2Favatar-defaut-chops.jpg?alt=media"
 
 def signed_url(path: str | None) -> str:
@@ -156,66 +153,13 @@ def load_all() -> Dict[str, pd.DataFrame]:
 
 data = load_all()
 
-# ╔════════════════════════════════════════════╗
-#               MEMBERS DATAFRAME (idem)
-# ╚════════════════════════════════════════════╝
+# ─────────────────────── MEMBERS DF (identique) ───────────────────────
 @lru_cache(maxsize=1)
 def build_members_df() -> pd.DataFrame:
     users, children = data["users"].copy(), data["children"].copy()
     purchases = data["purchases"].copy()
     sessions = data["sessions"].set_index("id")
-
     users["type"], users["parentUid"] = "parent", users["id"]
-
     if not children.empty:
         children["type"] = "child"
-        children.rename(columns=dict(childId="id", firstName="first_name", lastName="last_name", birthDate="birth_date", photoUrl="image_url"), inplace=True)
-        for col in users.columns:
-            if col not in children.columns:
-                children[col] = None
-
-    members = pd.concat([users, children], ignore_index=True, sort=False)
-
-    if not purchases.empty:
-        if "createdAt._seconds" in purchases:
-            purchases.sort_values("createdAt._seconds", ascending=False, inplace=True)
-        purchases["_k"] = purchases["userId"] + "_" + purchases["childId"].fillna("")
-        firsts = purchases.drop_duplicates("_k")
-        members["_k"] = members["parentUid"] + "_" + members["id"].where(members["type"] == "child", "")
-        members = members.merge(firsts, on="_k", how="left", suffixes=("", "_p")).drop(columns="_k")
-
-    members["full_name"] = (members["first_name"].fillna("") + " " + members["last_name"].fillna("")).str.strip()
-    members["avatar"] = members["image_url"].apply(signed_url)
-
-    if not sessions.empty and "sessionId" in members:
-        end_dt = pd.to_datetime(members["sessionId"].map(sessions["endDate"]), errors="coerce", utc=True)
-        today = pd.Timestamp.now(tz=pytz.UTC)
-        members["days_left"] = (end_dt - today).dt.days
-        members["session_name"] = members["sessionId"].map(sessions["name"])
-
-    return members
-
-members_df = build_members_df()
-
-# ╔════════════════════════════════════════════╗
-#           READ/SET QUERY PARAM  (NAV)
-# ╚════════════════════════════════════════════╝
-params = st.experimental_get_query_params()
-current_nav = params.get("nav", ["Dashboard"])[0]
-
-# Ensure the param is set (avoids blank URL on first load)
-st.experimental_set_query_params(nav=current_nav)
-
-# ╔════════════════════════════════════════════╗
-#                SIDEBAR CONTENT
-# ╚════════════════════════════════════════════╝
-PROFILE = {
-    "name": "James Gibson",
-    "handle": "@jamesweb",
-    "avatar": "https://randomuser.me/api/portraits/men/32.jpg",
-    "stats": {"Posts": 2594, "Follows": 465, "Likes": 531},
-}
-
-with st.sidebar:
-    # ── profile card ──
-    st.markdown(f"""<div class='profile-card'><img src='{PROFILE['avatar']}'/><div class='name'>{PROFILE['name']}</div><div class='handle'>{PROFILE['handle']}</div><div class='profile-stats'><div><span>{PROFILE['stats']['Posts']}</span><br/>Posts</div><div><span>{PROFILE['stats']['Follows']}</span><br/>Follows
+        children.rename(columns=dict(childId="id", firstName="first_name", lastName="last_name", birth
