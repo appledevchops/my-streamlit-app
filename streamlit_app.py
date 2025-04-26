@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-streamlit_app.py – Dashboard CHOPS v2.6
-Tweaks du **sidebar** suite à feedback :
-  • Fond bleu‑gris translucide + blur (effet « glacé »)
-  • Texte blanc par défaut
-  • Items navigation pleine largeur, padding + espacement
-  • Hover : fond bleu clair translucide ; Selected : bleu vif + barre gauche
-  • Code JS minimal conservé pour classe .selected
+streamlit_app.py – Dashboard CHOPS v2.7
+💄 **Sidebar navigation re‑styled** (iOS card look)
+  • Nav items = glass cards (rounded, shadow, scale on hover)
+  • Full‑width, generous spacing
+  • Smooth color transition : default translucide, hover light blue, selected deep blue
+Le reste du code reste inchangé.
 """
 from __future__ import annotations
 
@@ -24,7 +23,7 @@ import textwrap
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
 
-# ──────────────────────────────── PAGE CONFIG
+# ───────────────────────── PAGE CONFIG
 st.set_page_config(
     page_title="Dashboard CHOPS",
     page_icon="🏓",
@@ -32,28 +31,28 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ============================================================================
-#                               CSS GLOBAL
-# ============================================================================
+# ╔══════════════════════════════════════════════════════════╗
+#                         GLOBAL CSS
+# ╚══════════════════════════════════════════════════════════╝
 st.markdown(
     """
 <style>
 html, body, .stApp{background:#f2f2f7 !important;}
 
-/* ===== SIDEBAR – glassy dark ===== */
+/* ===== SIDEBAR – frosted glass ===== */
 section[data-testid="stSidebar"]>div:first-child{
-  background:rgba(15,23,42,.72);           /* bleu‑gris translucide */
-  backdrop-filter:blur(8px);               /* effet glacé */
-  color:#ffffff;
+  background:rgba(15,23,42,.72);
+  backdrop-filter:blur(8px);
+  color:#fff;
   border-right:none;
   padding:0;
 }
 
-/* Masquer l'ancien title "Navigation" */
+/* Hide default radio header */
 section[data-testid="stSidebar"] h2,
 section[data-testid="stSidebar"] label[data-baseweb="radio"]>div:first-child{display:none;}
 
-/* ===== profile card ===== */
+/* ===== PROFILE CARD ===== */
 .profile-card{padding:2rem 1.5rem 1rem;text-align:center;border-bottom:1px solid rgba(255,255,255,.06);} 
 .profile-card img{width:72px;height:72px;border-radius:50%;object-fit:cover;box-shadow:0 0 0 3px #38bdf8;} 
 .profile-card .name{font-size:1.15rem;font-weight:600;margin-top:.75rem;} 
@@ -66,38 +65,43 @@ section[data-testid="stSidebar"] label[data-baseweb="radio"]>div:first-child{dis
 .profile-buttons .message{background:#e5e7eb;} 
 .profile-buttons button:hover{filter:brightness(1.09);} 
 
-/* ===== navigation ===== */
-.nav-container{padding:.3rem 0 1rem;} 
-.nav-item{display:flex;align-items:center;gap:.75rem;width:100%;padding:.9rem 1.75rem;margin-bottom:.15rem;font-size:.95rem;font-weight:500;color:#ffffff;cursor:pointer;transition:background .15s;} 
-.nav-item:hover{background:rgba(96,165,250,.18);} 
-.nav-item.selected{background:#2563eb;font-weight:600;position:relative;} 
-.nav-item.selected::before{content:"";position:absolute;left:0;top:0;height:100%;width:4px;background:#38bdf8;} 
-.nav-icon{font-size:1.15rem;line-height:0;} 
+/* ===== NAVIGATION (card style) ===== */
+.nav-container{padding:1rem 0 1.5rem;display:flex;flex-direction:column;gap:.5rem;}
+.nav-item{
+  display:flex;align-items:center;gap:.85rem;width:calc(100% - 2rem);
+  margin:0 1rem; padding:.95rem 1.1rem;
+  font-size:.95rem;font-weight:500;
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.06);
+  border-radius:14px;
+  color:#ffffff;cursor:pointer;
+  transition:all .18s ease;
+  box-shadow:0 1px 2px rgba(0,0,0,.22);
+}
+.nav-item:hover{background:rgba(96,165,250,.20);transform:scale(1.02);} 
+.nav-item.selected{
+  background:#2563eb;box-shadow:0 2px 4px rgba(0,0,0,.25);border-color:#2563eb;
+}
+.nav-item.selected:hover{transform:none;} /* avoid jump */
+.nav-icon{font-size:1.2rem;line-height:0;}
 
-/* ===== metric cards ===== */
+/* ===== metric cards / tables ===== */
 .metric-card{background:#ffffff;border:1px solid #e5e5e5;border-radius:12px;padding:1rem;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.04);} 
 .metric-label{font-size:.9rem;font-weight:600;color:#6b7280;} 
 .metric-value{font-size:1.6rem;font-weight:700;color:#1c1c1e;margin-top:.25rem;} 
-.metric-delta{font-size:.8rem;} 
-.metric-delta.up{color:#22c55e;} 
-.metric-delta.down{color:#ef4444;} 
-
+.metric-delta{font-size:.8rem;} .metric-delta.up{color:#22c55e;} .metric-delta.down{color:#ef4444;} 
 h2{margin-top:2.5rem;font-weight:700;} 
-
 .stPlotlyChart,.stAltairChart,.st-vega-lite{background:#fff;padding:1rem;border-radius:12px;box-shadow:0 2px 6px rgba(0,0,0,.04);} 
 
-/* ===== member table ===== */
-.member-table{width:100%;border-collapse:collapse;font-family:Arial,sans-serif;} 
-.member-table th{background:#007aff;color:#fff;padding:10px;text-align:left;} 
-.member-table td{padding:8px;border-bottom:1px solid #e0e0e0;vertical-align:middle;} 
-.member-table tr:hover{background:#f5f5f5;transition:background .15s;} 
-.avatar{width:40px;height:40px;border-radius:50%;object-fit:cover;margin-right:8px;vertical-align:middle;} 
-.badge{display:inline-block;padding:3px 6px;border-radius:4px;color:#fff;font-size:12px;margin-left:6px;} 
-.badge-admin{background:#16a34a;} 
-.badge-coach{background:#ff9f0a;} 
-.badge-paid{background:#30d158;} 
-.badge-pend{background:#eab308;} 
-.card-link{text-decoration:none;font-size:18px;margin-left:8px;} 
+.member-table{width:100%;border-collapse:collapse;font-family:Arial,sans-serif;}
+.member-table th{background:#007aff;color:#fff;padding:10px;text-align:left;}
+.member-table td{padding:8px;border-bottom:1px solid #e0e0e0;vertical-align:middle;}
+.member-table tr:hover{background:#f5f5f5;transition:background .15s;}
+.avatar{width:40px;height:40px;border-radius:50%;object-fit:cover;margin-right:8px;vertical-align:middle;}
+.badge{display:inline-block;padding:3px 6px;border-radius:4px;color:#fff;font-size:12px;margin-left:6px;}
+.badge-admin{background:#16a34a;}.badge-coach{background:#ff9f0a;}
+.badge-paid{background:#30d158;}.badge-pend{background:#eab308;}
+.card-link{text-decoration:none;font-size:18px;margin-left:8px;}
 </style>
 """,
     unsafe_allow_html=True,
